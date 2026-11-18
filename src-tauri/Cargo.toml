@@ -17,6 +17,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+rusqlite = { version = "0.43.0", features = ["bundled"] }
+uuid = { version = "1.29.3", features = ["v4"] }
+chrono = "0.4.45"
+tauri-plugin-window-state = "2.5.0"
 
 # https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
