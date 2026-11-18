@@ -16,6 +16,8 @@ type Props = {
   folders: Folder[];
   notes: Note[];
   pendingReminders: number;
+  /** compromissos de hoje: eventos e lembretes pendentes */
+  todayCount: number;
   section: string;
   onSection: (id: string) => void;
   look: Appearance;
@@ -90,6 +92,7 @@ export function Sidebar(p: Props) {
             s.id === "all" ? p.notes.length
             : s.id === "checklists" ? p.notes.filter((n) => n.has_checklist).length
             : s.id === "reminders" ? p.pendingReminders
+            : s.id === "agenda" ? p.todayCount
             : 0),
         )}
 

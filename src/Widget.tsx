@@ -1,8 +1,8 @@
 // Janela de widget na área de trabalho (docs/ESPECIFICACAO.md, 5): post-it, checklist ou agenda de hoje.
 import { useEffect, useState, type MouseEvent } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type Appearance, type Note, type Reminder, type Widget } from "./api";
-import { isToday, timeInput } from "./dates";
+import { api, type Appearance, type CalEvent, type Note, type Reminder, type Widget } from "./api";
+import { dayItems } from "./dates";
 import { Icon, paths } from "./icons";
 import { noteDoc, noteLines, toggleTask, type Line } from "./noteContent";
 
@@ -15,11 +15,13 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
   const [w, setW] = useState<Widget | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [events, setEvents] = useState<CalEvent[]>([]);
   const [, setTick] = useState(0);
 
   const load = async () => {
-    const [wd, n, r] = await Promise.all([api.getWidget(id), api.listNotes(), api.listReminders()]);
+    const [wd, n, r, e] = await Promise.all([api.getWidget(id), api.listNotes(), api.listReminders(), api.listEvents()]);
     setW(wd);
+    setEvents(e);
     setNotes(n);
     setReminders(r);
   };
@@ -122,10 +124,9 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
     );
   }
 
-  // Agenda de hoje: próximos lembretes do dia (os eventos entram na Fase 6).
+  // Agenda de hoje: os próximos eventos e lembretes do dia (os de dia inteiro ficam até o fim do dia).
   const now = new Date();
-  const when = (r: Reminder) => new Date(r.snoozed_until ?? r.due_at);
-  const next = reminders.filter((r) => !r.done && isToday(when(r), now) && when(r) >= now).slice(0, 4);
+  const next = dayItems(now, events, reminders).filter((i) => !i.done && (i.allDay || i.at >= now)).slice(0, 4);
   const wd = weekday.format(now);
   return (
     <div className="wg" onContextMenu={menu}>
@@ -141,10 +142,10 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
         </span>
       </div>
       <div className="w-scroll">
-        {next.map((r) => (
-          <div key={r.id} className="ag-item">
-            <span className="t2 ag-time">{timeInput(when(r))}</span>
-            <span>{r.title}</span>
+        {next.map((it) => (
+          <div key={`${it.kind}-${it.id}`} className="ag-item">
+            <span className="t2 ag-time">{it.time}</span>
+            <span>{it.title}</span>
           </div>
         ))}
         {next.length === 0 && <p className="t2 ag-empty">Nada mais para hoje.</p>}

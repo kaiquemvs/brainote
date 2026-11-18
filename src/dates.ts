@@ -95,3 +95,58 @@ export function dateInput(d: Date): string {
 
 /** Valor para <input type="time">: "09:05". */
 export const timeInput = time;
+
+// ---------- Agenda (4.5) ----------
+
+/** Dias da grade, de domingo a sábado: do domingo antes do dia 1 até o sábado depois do último dia. */
+export function monthGrid(year: number, month: number): Date[] {
+  const offset = new Date(year, month, 1).getDay();
+  const days = new Date(year, month + 1, 0).getDate();
+  const cells = Math.ceil((offset + days) / 7) * 7;
+  return Array.from({ length: cells }, (_, i) => new Date(year, month, 1 - offset + i));
+}
+
+export type DayItem = {
+  id: string;
+  kind: "event" | "reminder";
+  title: string;
+  /** "09:00" ou "Dia todo" */
+  time: string;
+  /** hora de fim do evento, se houver */
+  end: string | null;
+  done: boolean;
+  at: Date;
+  allDay: boolean;
+};
+
+type EventLike = { id: string; title: string; starts_at: string; ends_at: string | null; all_day: boolean };
+type ReminderLike = { id: string; title: string; due_at: string; snoozed_until: string | null; done: boolean };
+
+/** Eventos e lembretes de um dia: os de dia inteiro primeiro, depois por horário. */
+export function dayItems(day: Date, events: EventLike[], reminders: ReminderLike[]): DayItem[] {
+  const items: DayItem[] = [];
+  for (const e of events) {
+    const at = new Date(e.starts_at);
+    if (daysAgo(at, day) !== 0) continue;
+    const end = e.ends_at && !e.all_day ? time(new Date(e.ends_at)) : null;
+    items.push({ id: e.id, kind: "event", title: e.title, time: e.all_day ? "Dia todo" : time(at), end, done: false, at, allDay: e.all_day });
+  }
+  for (const r of reminders) {
+    const at = new Date(r.snoozed_until ?? r.due_at);
+    if (daysAgo(at, day) !== 0) continue;
+    items.push({ id: r.id, kind: "reminder", title: r.title, time: time(at), end: null, done: r.done, at, allDay: false });
+  }
+  return items.sort((a, b) => Number(b.allDay) - Number(a.allDay) || a.at.getTime() - b.at.getTime());
+}
+
+const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
+const weekdayLong = new Intl.DateTimeFormat("pt-BR", { weekday: "long" });
+const dayMonth = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long" });
+const monthOnly = new Intl.DateTimeFormat("pt-BR", { month: "long" });
+
+/** "Quarta-feira · Hoje" ou "Sexta-feira". */
+export const dayKicker = (d: Date, now: Date) => cap(weekdayLong.format(d)) + (isToday(d, now) ? " · Hoje" : "");
+/** "18 de novembro". */
+export const dayTitle = (d: Date) => dayMonth.format(d);
+/** "Novembro". */
+export const monthName = (d: Date) => cap(monthOnly.format(d));

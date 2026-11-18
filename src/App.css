@@ -256,3 +256,21 @@ button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .ag-item { display: flex; gap: 10px; padding: 7px 0; border-top: 1px solid var(--sep); line-height: 1.35; font-weight: 500; }
 .ag-time { flex: none; width: 40px; font-size: 12px; font-variant-numeric: tabular-nums; padding-top: 1px; }
 .ag-empty { margin: 0; padding-top: 8px; border-top: 1px solid var(--sep); }
+
+/* Agenda: calendário do mês (protótipo) e painel do dia */
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.wk { text-align: center; font-size: 12px; font-weight: 600; padding: 4px 0; }
+.day { position: relative; height: 60px; border: 0; border-radius: 10px; background: transparent; color: var(--text); font-size: 14px; font-weight: 500; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 5px; padding: 7px 0 0; cursor: pointer; }
+.day:hover { background: var(--hover); }
+.day.is-out { color: var(--text2); opacity: .55; }
+.day .num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; }
+.day.is-today .num { background: var(--accfill); color: var(--acctick); font-weight: 700; }
+.day.is-sel { background: var(--sel); color: var(--seltext); opacity: 1; }
+.day:focus-visible, .ag-row:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.ev-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--acc); }
+.day.is-sel .ev-dot { background: var(--seltext); }
+.ag-row { display: flex; gap: 12px; width: 100%; padding: 10px 0; border: 0; border-top: 1px solid var(--sep); background: transparent; color: var(--text); text-align: left; font-family: inherit; cursor: pointer; }
+.ag-row:hover .chk-t { text-decoration: underline; }
+.ag-row-t { flex: none; width: 52px; font-size: 13px; font-variant-numeric: tabular-nums; padding-top: 1px; }
+.badge { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--field); color: var(--text2); }
+.badge.is-rem { background: var(--chip); color: var(--acc); }

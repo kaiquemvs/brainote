@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type Appearance, type Folder, type Note, type Reminder, type Widget } from "./api";
+import { api, type Appearance, type CalEvent, type Folder, type Note, type Reminder, type Widget } from "./api";
 import { Editor } from "./Editor";
 import { Menu, type MenuState } from "./Menu";
 import { NoteList } from "./NoteList";
@@ -10,9 +10,9 @@ import { Settings } from "./Settings";
 import { Sidebar, SHORTCUTS } from "./Sidebar";
 import { WidgetMenu } from "./WidgetMenu";
 import { WindowButtons } from "./WindowButtons";
-
-// Atalho que ganha conteúdo numa próxima fase (Agenda: 6).
-const LATER = ["agenda"];
+import { Agenda } from "./Agenda";
+import { EventForm, type EventFormInit } from "./EventForm";
+import { dayItems } from "./dates";
 
 export default function App({ initialLook }: { initialLook: Appearance }) {
   const [look, setLook] = useState(initialLook);
@@ -36,10 +36,13 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null); // lembrete aberto pela notificação
   const [widgets, setWidgets] = useState<Widget[]>([]);
+  const [events, setEvents] = useState<CalEvent[]>([]);
+  const [eventForm, setEventForm] = useState<EventFormInit | null>(null);
   const [widgetMenuOpen, setWidgetMenuOpen] = useState(false);
 
   const refresh = async () => {
-    const [f, n, r, w] = await Promise.all([api.listFolders(), api.listNotes(), api.listReminders(), api.listWidgets()]);
+    const [f, n, r, w, e] = await Promise.all([api.listFolders(), api.listNotes(), api.listReminders(), api.listWidgets(), api.listEvents()]);
+    setEvents(e);
     setFolders(f);
     setNotes(n);
     setReminders(r);
@@ -119,9 +122,10 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
   };
 
   // Avisos do Rust: bandeja, notificação clicada, widgets e dados mudados fora desta janela.
-  const handlers = useRef({ newNote, openReminder: (_: string | null) => {}, openNote: (_: string) => {} });
+  const handlers = useRef({ newNote, openReminder: (_: string | null) => {}, openNote: (_: string) => {}, openAgenda: () => {} });
   handlers.current = {
     newNote,
+    openAgenda: () => go("agenda"),
     openReminder: (id) => {
       go("reminders");
       setHighlight(id);
@@ -141,6 +145,7 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
         setSideOpen(true);
         setWidgetMenuOpen(true);
       }),
+      listen("open-agenda", () => handlers.current.openAgenda()),
     ];
     return () => offs.forEach((off) => off.then((f) => f()));
   }, []);
@@ -152,6 +157,7 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
           folders={folders}
           notes={notes}
           pendingReminders={reminders.filter((r) => !r.done).length}
+          todayCount={dayItems(new Date(), events, reminders).filter((i) => !i.done).length}
           section={section}
           onSection={go}
           look={look}
@@ -164,7 +170,17 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
         />
       )}
 
-      {section === "reminders" ? (
+      {section === "agenda" ? (
+        <Agenda
+          events={events}
+          reminders={reminders}
+          onNewEvent={(day) => setEventForm({ day })}
+          onEditEvent={(event) => setEventForm({ event })}
+          onOpenReminder={(id) => handlers.current.openReminder(id)}
+          sideOpen={sideOpen}
+          onToggleSide={() => setSideOpen(!sideOpen)}
+        />
+      ) : section === "reminders" ? (
         <Reminders
           reminders={reminders}
           notes={notes}
@@ -182,7 +198,7 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
             notes={list}
             folders={folders}
             showFolder={!folder}
-            emptyText={query ? "Nenhuma nota encontrada." : LATER.includes(section) ? "Chega numa próxima fase." : "Nenhuma nota ainda."}
+            emptyText={query ? "Nenhuma nota encontrada." : "Nenhuma nota ainda."}
             selectedId={selected?.id ?? null}
             query={query}
             onQuery={setQuery}
@@ -226,6 +242,7 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
 
       {menu && <Menu menu={menu} onClose={() => setMenu(null)} />}
       {form && <ReminderForm init={form} notes={notes} onClose={() => setForm(null)} onSaved={refresh} />}
+      {eventForm && <EventForm init={eventForm} notes={notes} onClose={() => setEventForm(null)} onSaved={refresh} />}
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
       {widgetMenuOpen && (
         <WidgetMenu widgets={widgets} notes={notes} noteId={selected?.id ?? null} onClose={() => setWidgetMenuOpen(false)} />

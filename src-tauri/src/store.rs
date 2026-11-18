@@ -67,6 +67,16 @@ CREATE TABLE widgets (
   height  REAL NOT NULL,
   on_top  INTEGER NOT NULL DEFAULT 0
 );
+"#, r#"
+-- Evento de dia inteiro: starts_at à meia-noite do dia e ends_at nulo.
+CREATE TABLE events (
+  id        TEXT PRIMARY KEY,
+  title     TEXT NOT NULL,
+  starts_at TEXT NOT NULL,
+  ends_at   TEXT,
+  all_day   INTEGER NOT NULL DEFAULT 0,
+  note_id   TEXT REFERENCES notes(id) ON DELETE SET NULL
+);
 "#];
 
 #[derive(Serialize)]
@@ -107,6 +117,26 @@ pub struct ReminderInput {
     pub title: String,
     pub due_at: String,
     pub repeat: String,
+}
+
+#[derive(Serialize)]
+pub struct Event {
+    pub id: String,
+    pub title: String,
+    pub starts_at: String,
+    pub ends_at: Option<String>,
+    pub all_day: bool,
+    pub note_id: Option<String>,
+}
+
+/// O que a tela manda ao criar ou editar um evento (validado em lib.rs).
+#[derive(Deserialize)]
+pub struct EventInput {
+    pub title: String,
+    pub starts_at: String,
+    pub ends_at: Option<String>,
+    pub all_day: bool,
+    pub note_id: Option<String>,
 }
 
 /// Widget na área de trabalho: postit, checklist ou agenda.
@@ -309,6 +339,40 @@ fn next_due(due_at: &str, repeat: &str, now: DateTime<Local>) -> Option<String> 
         })
         .find(|d| *d > now)
         .map(|d| d.to_rfc3339_opts(SecondsFormat::Secs, false))
+}
+
+// ---------- Eventos (Agenda) ----------
+
+const EVENT_COLS: &str = "id, title, starts_at, ends_at, all_day, note_id";
+
+fn event(r: &Row) -> Result<Event> {
+    Ok(Event { id: r.get(0)?, title: r.get(1)?, starts_at: r.get(2)?, ends_at: r.get(3)?, all_day: r.get(4)?, note_id: r.get(5)? })
+}
+
+pub fn list_events(c: &Connection) -> Result<Vec<Event>> {
+    c.prepare(&format!("SELECT {EVENT_COLS} FROM events ORDER BY julianday(starts_at)"))?.query_map([], event)?.collect()
+}
+
+pub fn create_event(c: &Connection, e: &EventInput) -> Result<Event> {
+    let id = new_id();
+    c.execute(
+        "INSERT INTO events (id, title, starts_at, ends_at, all_day, note_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![id, e.title, e.starts_at, e.ends_at, e.all_day, e.note_id],
+    )?;
+    c.query_row(&format!("SELECT {EVENT_COLS} FROM events WHERE id = ?1"), [&id], event)
+}
+
+pub fn update_event(c: &Connection, id: &str, e: &EventInput) -> Result<()> {
+    c.execute(
+        "UPDATE events SET title = ?2, starts_at = ?3, ends_at = ?4, all_day = ?5, note_id = ?6 WHERE id = ?1",
+        params![id, e.title, e.starts_at, e.ends_at, e.all_day, e.note_id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_event(c: &Connection, id: &str) -> Result<()> {
+    c.execute("DELETE FROM events WHERE id = ?1", [id])?;
+    Ok(())
 }
 
 // ---------- Widgets ----------
@@ -555,6 +619,35 @@ mod tests {
         let todos = list_reminders(&c).unwrap();
         assert_eq!(todos.len(), 3);
         assert_eq!(todos.iter().filter(|r| r.title == "vencido" && !r.done).count(), 1);
+    }
+
+    #[test]
+    fn eventos() {
+        let c = db();
+        let n = create_note(&c, None).unwrap();
+        let ev = |title: &str, starts: &str| EventInput {
+            title: title.into(),
+            starts_at: starts.into(),
+            ends_at: None,
+            all_day: false,
+            note_id: Some(n.id.clone()),
+        };
+        let tarde = create_event(&c, &ev("Reunião", "2026-11-18T14:00:00-03:00")).unwrap();
+        create_event(&c, &ev("Café", "2026-11-18T09:00:00-03:00")).unwrap();
+        // em ordem de horário
+        assert_eq!(list_events(&c).unwrap().iter().map(|e| e.title.as_str()).collect::<Vec<_>>(), ["Café", "Reunião"]);
+
+        let mut dia_todo = ev("Feriado", "2026-11-20T00:00:00-03:00");
+        dia_todo.all_day = true;
+        update_event(&c, &tarde.id, &dia_todo).unwrap();
+        let e = list_events(&c).unwrap().into_iter().find(|e| e.id == tarde.id).unwrap();
+        assert_eq!((e.title.as_str(), e.all_day), ("Feriado", true));
+
+        // nota apagada de vez: o evento fica, sem a nota
+        c.execute("DELETE FROM notes WHERE id = ?1", [&n.id]).unwrap();
+        assert!(list_events(&c).unwrap().iter().all(|e| e.note_id.is_none()));
+        delete_event(&c, &tarde.id).unwrap();
+        assert_eq!(list_events(&c).unwrap().len(), 1);
     }
 
     #[test]

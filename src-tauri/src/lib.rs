@@ -188,6 +188,44 @@ fn set_reminder_done(app: AppHandle, db: State<Db>, id: &str, done: bool) -> Res
     write(&app, &db, |c| store::set_reminder_done(c, id, done))
 }
 
+// ---------- Eventos (Agenda) ----------
+
+fn check_event(e: &store::EventInput) -> Res<()> {
+    if e.title.trim().is_empty() {
+        return Err("O evento precisa de um título.".into());
+    }
+    let start = chrono::DateTime::parse_from_rfc3339(&e.starts_at).map_err(|_| "Data do evento inválida.")?;
+    if let Some(end) = &e.ends_at {
+        let end = chrono::DateTime::parse_from_rfc3339(end).map_err(|_| "Hora de fim inválida.")?;
+        if end < start {
+            return Err("A hora de fim é antes do início.".into());
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn list_events(db: State<Db>) -> Res<Vec<store::Event>> {
+    with(&db, store::list_events)
+}
+
+#[tauri::command]
+fn create_event(app: AppHandle, db: State<Db>, event: store::EventInput) -> Res<store::Event> {
+    check_event(&event)?;
+    write(&app, &db, |c| store::create_event(c, &event))
+}
+
+#[tauri::command]
+fn update_event(app: AppHandle, db: State<Db>, id: &str, event: store::EventInput) -> Res<()> {
+    check_event(&event)?;
+    write(&app, &db, |c| store::update_event(c, id, &event))
+}
+
+#[tauri::command]
+fn delete_event(app: AppHandle, db: State<Db>, id: &str) -> Res<()> {
+    write(&app, &db, |c| store::delete_event(c, id))
+}
+
 // ---------- Widgets ----------
 
 #[tauri::command]
@@ -308,6 +346,10 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            list_events,
+            create_event,
+            update_event,
+            delete_event,
             list_widgets,
             get_widget,
             create_widget,

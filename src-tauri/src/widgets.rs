@@ -85,12 +85,13 @@ fn toggle_on_top(app: &AppHandle, id: &str) {
     changed(app);
 }
 
-/// "Abrir no brainote": a nota do post-it/checklist; a agenda só mostra o app (a tela de Agenda é da Fase 6).
+/// "Abrir no brainote": a nota do post-it/checklist; sem nota (widget da agenda), a tela de Agenda.
 pub fn open_in_app(app: &AppHandle, note_id: Option<&str>) {
     show_main(app);
-    if let Some(id) = note_id {
-        let _ = app.emit("open-note", id);
-    }
+    let _ = match note_id {
+        Some(id) => app.emit("open-note", id),
+        None => app.emit("open-agenda", ()),
+    };
 }
 
 /// Menu de botão direito do próprio Windows: o widget é pequeno demais para um menu em HTML.

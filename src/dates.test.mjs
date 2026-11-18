@@ -54,3 +54,36 @@ test("lembretes: textos, grupos e atalhos de data", () => {
   assert.match(iso, /^2026-11-18T18:00:00[+-]\d\d:\d\d$/);
   assert.equal(new Date(iso).getTime(), at(18, 10, 18, 0).getTime());
 });
+
+test("agenda: grade do mês começa no domingo e fecha a última semana", async () => {
+  const { monthGrid } = await import("./dates.ts");
+  const nov = monthGrid(2026, 10); // 1º/11/2026 é domingo, 30 dias
+  assert.equal(nov.length, 35);
+  assert.equal(nov[0].getTime(), new Date(2026, 10, 1).getTime());
+  assert.equal(nov[34].getTime(), new Date(2026, 11, 5).getTime());
+  assert.equal(monthGrid(2026, 1).length, 28); // fevereiro de 2026 cabe em 4 semanas
+  const ago = monthGrid(2026, 7); // 1º/08/2026 é sábado: 6 semanas
+  assert.equal(ago.length, 42);
+  assert.equal(ago[0].getTime(), new Date(2026, 6, 26).getTime());
+});
+
+test("agenda: compromissos do dia em ordem, dia inteiro primeiro", async () => {
+  const { dayItems, dayKicker, dayTitle, monthName } = await import("./dates.ts");
+  const iso = (d, h, m = 0) => new Date(2026, 10, d, h, m).toISOString();
+  const events = [
+    { id: "e1", title: "Reunião", starts_at: iso(18, 14), ends_at: iso(18, 15, 30), all_day: false },
+    { id: "e2", title: "Feriado", starts_at: iso(18, 0), ends_at: null, all_day: true },
+    { id: "e3", title: "Outro dia", starts_at: iso(19, 9), ends_at: null, all_day: false },
+  ];
+  const reminders = [{ id: "r1", title: "Pagar conta", due_at: iso(18, 9), snoozed_until: iso(18, 16), done: false }];
+  const items = dayItems(new Date(2026, 10, 18), events, reminders);
+  assert.deepEqual(items.map((i) => [i.title, i.time, i.end]), [
+    ["Feriado", "Dia todo", null],
+    ["Reunião", "14:00", "15:30"],
+    ["Pagar conta", "16:00", null], // adiado: vale o horário do "adiar"
+  ]);
+  assert.equal(dayKicker(new Date(2026, 10, 18), now), "Quarta-feira · Hoje");
+  assert.equal(dayKicker(new Date(2026, 10, 20), now), "Sexta-feira");
+  assert.equal(dayTitle(new Date(2026, 10, 18)), "18 de novembro");
+  assert.equal(monthName(new Date(2026, 10, 1)), "Novembro");
+});

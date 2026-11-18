@@ -19,7 +19,9 @@ export type Repeat = "none" | "daily" | "weekly" | "monthly";
 export type ReminderInput = { note_id: string | null; title: string; due_at: string; repeat: Repeat };
 export type Reminder = ReminderInput & { id: string; done: boolean; snoozed_until: string | null };
 export type Autostart = { enabled: boolean; available: boolean };
-export type WidgetKind = "postit" | "checklist" | "agenda";
+export type EventInput = { title: string; starts_at: string; ends_at: string | null; all_day: boolean; note_id: string | null };
+export type CalEvent = EventInput & { id: string };
+export type WidgetKind ="postit" | "checklist" | "agenda";
 export type Widget = {
   id: string;
   kind: WidgetKind;
@@ -41,6 +43,10 @@ function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 }
 
 export const api = {
+  listEvents: () => call<CalEvent[]>("list_events"),
+  createEvent: (event: EventInput) => call<CalEvent>("create_event", { event }),
+  updateEvent: (id: string, event: EventInput) => call<void>("update_event", { id, event }),
+  deleteEvent: (id: string) => call<void>("delete_event", { id }),
   listWidgets: () => call<Widget[]>("list_widgets"),
   // sem aviso de erro: o widget pode ter acabado de ser removido enquanto a janela fecha
   getWidget: (id: string) => invoke<Widget>("get_widget", { id }).catch(() => null),
