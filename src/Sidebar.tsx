@@ -83,7 +83,9 @@ export function Sidebar(p: Props) {
 
       <nav aria-label="Navegação" className="pane-scroll" style={{ padding: "0 10px 12px" }}>
         <div className="lbl" style={{ padding: "6px 10px" }}>Atalhos</div>
-        {SHORTCUTS.map((s) => nav(s.id, s.label, s.icon, s.id === "all" ? p.notes.length : 0))}
+        {SHORTCUTS.map((s) =>
+          nav(s.id, s.label, s.icon, s.id === "all" ? p.notes.length : s.id === "checklists" ? p.notes.filter((n) => n.has_checklist).length : 0),
+        )}
 
         <div className="lbl" style={{ padding: "18px 10px 6px" }}>Pastas</div>
         {p.folders.map((f) =>

@@ -60,8 +60,10 @@ fn create_note(db: State<Db>, folder_id: Option<&str>) -> Res<store::Note> {
 }
 
 #[tauri::command]
-fn update_note(db: State<Db>, id: &str, title: &str, plain_text: &str) -> Res<()> {
-    with(&db, |c| store::update_note(c, id, title, plain_text))
+fn update_note(db: State<Db>, id: &str, title: &str, content_json: &str, plain_text: &str) -> Res<()> {
+    // JSON quebrado deixaria a nota impossível de abrir: recusa antes de gravar
+    serde_json::from_str::<serde_json::Value>(content_json).map_err(|e| format!("Conteúdo inválido: {e}"))?;
+    with(&db, |c| store::update_note(c, id, title, content_json, plain_text))
 }
 
 #[tauri::command]

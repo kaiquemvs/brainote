@@ -6,9 +6,11 @@ export type Note = {
   id: string;
   folder_id: string | null;
   title: string;
+  content_json: string | null; // JSON do TipTap; null nas notas da Fase 1
   plain_text: string;
   pinned: boolean;
   updated_at: string;
+  has_checklist: boolean;
 };
 
 function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -27,7 +29,8 @@ export const api = {
   listNotes: () => call<Note[]>("list_notes"),
   searchNotes: (query: string) => call<string[]>("search_notes", { query }),
   createNote: (folderId: string | null) => call<Note>("create_note", { folderId }),
-  updateNote: (id: string, title: string, plainText: string) => call<void>("update_note", { id, title, plainText }),
+  updateNote: (id: string, title: string, contentJson: string, plainText: string) =>
+    call<void>("update_note", { id, title, contentJson, plainText }),
   setPinned: (id: string, pinned: boolean) => call<void>("set_pinned", { id, pinned }),
   moveNote: (id: string, folderId: string | null) => call<void>("move_note", { id, folderId }),
   deleteNote: (id: string) => call<void>("delete_note", { id }),

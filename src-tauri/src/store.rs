@@ -48,9 +48,12 @@ pub struct Note {
     pub id: String,
     pub folder_id: Option<String>,
     pub title: String,
+    /// JSON do TipTap; vazio nas notas da Fase 1 (o editor monta a partir de `plain_text`).
+    pub content_json: Option<String>,
     pub plain_text: String,
     pub pinned: bool,
     pub updated_at: String,
+    pub has_checklist: bool,
 }
 
 fn now() -> String {
@@ -115,16 +118,20 @@ pub fn delete_folder(c: &Connection, id: &str) -> Result<()> {
 
 // ---------- Notas ----------
 
-const NOTE_COLS: &str = "id, folder_id, title, plain_text, pinned, updated_at";
+// has_checklist: o JSON do TipTap (JSON.stringify, sem espaços) tem pelo menos um item de checklist.
+const NOTE_COLS: &str = r#"id, folder_id, title, content_json, plain_text, pinned, updated_at,
+    COALESCE(content_json LIKE '%"type":"taskItem"%', 0)"#;
 
 fn note(r: &Row) -> Result<Note> {
     Ok(Note {
         id: r.get(0)?,
         folder_id: r.get(1)?,
         title: r.get(2)?,
-        plain_text: r.get(3)?,
-        pinned: r.get(4)?,
-        updated_at: r.get(5)?,
+        content_json: r.get(3)?,
+        plain_text: r.get(4)?,
+        pinned: r.get(5)?,
+        updated_at: r.get(6)?,
+        has_checklist: r.get(7)?,
     })
 }
 
@@ -151,10 +158,10 @@ pub fn create_note(c: &Connection, folder_id: Option<&str>) -> Result<Note> {
     get_note(c, &id)
 }
 
-pub fn update_note(c: &Connection, id: &str, title: &str, plain_text: &str) -> Result<()> {
+pub fn update_note(c: &Connection, id: &str, title: &str, content_json: &str, plain_text: &str) -> Result<()> {
     c.execute(
-        "UPDATE notes SET title = ?2, plain_text = ?3, updated_at = ?4 WHERE id = ?1",
-        params![id, title, plain_text, now()],
+        "UPDATE notes SET title = ?2, content_json = ?3, plain_text = ?4, updated_at = ?5 WHERE id = ?1",
+        params![id, title, content_json, plain_text, now()],
     )?;
     Ok(())
 }
@@ -217,8 +224,14 @@ mod tests {
         let c = db();
         let pasta = create_folder(&c, "Trabalho").unwrap();
         let n = create_note(&c, Some(&pasta.id)).unwrap();
-        update_note(&c, &n.id, "Reunião de alinhamento", "Pauta: orçamento dos monitores").unwrap();
+        let json = r#"{"type":"doc","content":[{"type":"taskList","content":[{"type":"taskItem","attrs":{"checked":false}}]}]}"#;
+        update_note(&c, &n.id, "Reunião de alinhamento", json, "Pauta: orçamento dos monitores").unwrap();
         create_note(&c, None).unwrap();
+
+        // só a nota com item de checklist entra em "Checklists"
+        let marcadas: Vec<bool> = list_notes(&c).unwrap().iter().map(|n| n.has_checklist).collect();
+        assert_eq!(marcadas.iter().filter(|&&m| m).count(), 1);
+        assert_eq!(get_note(&c, &n.id).unwrap().content_json.as_deref(), Some(json));
 
         // busca ignora acento, acha começo de palavra e exige todas as palavras
         assert_eq!(search_notes(&c, "reuniao").unwrap(), vec![n.id.clone()]);

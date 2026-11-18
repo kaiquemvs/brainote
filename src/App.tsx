@@ -6,8 +6,8 @@ import { NoteList } from "./NoteList";
 import { Sidebar, SHORTCUTS, type Theme } from "./Sidebar";
 import { WindowButtons } from "./WindowButtons";
 
-// Atalhos que ganham conteúdo nas próximas fases (Checklists: 2, Lembretes: 4, Agenda: 6).
-const LATER = ["checklists", "agenda", "reminders"];
+// Atalhos que ganham conteúdo nas próximas fases (Lembretes: 4, Agenda: 6).
+const LATER = ["agenda", "reminders"];
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>("light");
@@ -45,7 +45,11 @@ export default function App() {
   }, [deleted]);
 
   const folder = folders.find((f) => f.id === section);
-  const inSection = section === "all" ? notes : folder ? notes.filter((n) => n.folder_id === folder.id) : [];
+  const inSection =
+    section === "all" ? notes
+    : section === "checklists" ? notes.filter((n) => n.has_checklist)
+    : folder ? notes.filter((n) => n.folder_id === folder.id)
+    : [];
   const list = matches ? inSection.filter((n) => matches.has(n.id)) : inSection;
   const selected = list.find((n) => n.id === selectedId) ?? list[0] ?? null;
   const title = folder?.name ?? SHORTCUTS.find((s) => s.id === section)?.label ?? "";
@@ -120,17 +124,17 @@ export default function App() {
       />
 
       <section className="pane edit" aria-label="Editor da nota">
-        <div className="bar" data-tauri-drag-region style={{ paddingLeft: 14 }}>
-          <span className="grow" data-tauri-drag-region />
-          <WindowButtons />
-        </div>
-        <div className="pane-scroll" style={{ padding: "4px clamp(20px, 6%, 64px) 40px" }}>
-          {selected ? (
-            <Editor key={selected.id} note={selected} autoFocus={selected.id === focusId} onSaved={refresh} />
-          ) : (
+        {selected ? (
+          <Editor key={selected.id} note={selected} autoFocus={selected.id === focusId} onSaved={refresh} />
+        ) : (
+          <>
+            <div className="bar" data-tauri-drag-region>
+              <span className="grow" data-tauri-drag-region />
+              <WindowButtons />
+            </div>
             <p className="t2" style={{ margin: "120px 0 0", textAlign: "center", fontSize: 14 }}>Selecione ou crie uma nota.</p>
-          )}
-        </div>
+          </>
+        )}
       </section>
 
       {menu && <Menu menu={menu} onClose={() => setMenu(null)} />}
