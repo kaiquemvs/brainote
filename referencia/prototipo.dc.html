@@ -1,0 +1,962 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>brainote — protótipo do app de notas</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#8F5B00}a:hover{color:#6B4400}
+.root{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text);-webkit-font-smoothing:antialiased}
+.t-light{--text:#1C1C1E;--text2:#5C5C61;--side:#EFEEEA;--list:#F8F8F6;--edit:#FFFFFF;--card:#F4F3F0;--sep:rgba(0,0,0,.09);--hover:rgba(0,0,0,.05);--sel:#FCE6A0;--seltext:#1C1C1E;--seltext2:#4D4231;--side-sel:rgba(0,0,0,.075);--acc:#8F5B00;--accfill:#F5B800;--acctick:#1C1C1E;--chip:rgba(245,184,0,.18);--field:rgba(0,0,0,.055);--seg-on:#FFFFFF;--sw-off:rgba(0,0,0,.2);--pop:#FFFFFF;--widget:#FFFFFF;--win-shadow:0 24px 70px rgba(40,30,80,.28),0 0 0 1px rgba(0,0,0,.1);--w-shadow:0 14px 40px rgba(40,30,80,.22);--rim:inset 0 0 0 1px rgba(0,0,0,.04);--blur:none;background:radial-gradient(circle at 84% 20%,#FFB48F 0 150px,transparent 151px),radial-gradient(circle at 66% 82%,#9FD3F7 0 240px,transparent 241px),radial-gradient(circle at 10% 88%,#FFD96B 0 150px,transparent 151px),radial-gradient(circle at 30% 6%,#C9B6F2 0 270px,transparent 271px),linear-gradient(160deg,#F7F0EA,#E4DEF3)}
+.t-dark{--text:#F2F2F3;--text2:#A8A8AE;--side:#29292B;--list:#222224;--edit:#1C1C1E;--card:#262628;--sep:rgba(255,255,255,.09);--hover:rgba(255,255,255,.06);--sel:#6B5208;--seltext:#FFFFFF;--seltext2:#EFE3BF;--side-sel:rgba(255,255,255,.1);--acc:#FFD60A;--accfill:#FFD60A;--acctick:#1C1C1E;--chip:rgba(255,214,10,.14);--field:rgba(255,255,255,.08);--seg-on:#4A4A4D;--sw-off:rgba(255,255,255,.24);--pop:#2C2C2E;--widget:#262628;--win-shadow:0 24px 70px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.08);--w-shadow:0 14px 40px rgba(0,0,0,.45);--rim:inset 0 0 0 1px rgba(255,255,255,.06);--blur:none;background:radial-gradient(circle at 84% 20%,#8E3F22 0 150px,transparent 151px),radial-gradient(circle at 66% 82%,#1B4F7A 0 240px,transparent 241px),radial-gradient(circle at 10% 88%,#7A5C0E 0 150px,transparent 151px),radial-gradient(circle at 30% 6%,#3E3180 0 270px,transparent 271px),linear-gradient(160deg,#15162A,#0D0E18)}
+.t-light.g-on{--side:rgba(244,243,248,.6);--list:rgba(250,250,252,.68);--edit:rgba(255,255,255,.78);--card:rgba(255,255,255,.55);--pop:rgba(255,255,255,.82);--widget:rgba(255,255,255,.58);--blur:blur(28px) saturate(180%);--rim:inset 0 1px 0 rgba(255,255,255,.85),inset 0 0 0 1px rgba(255,255,255,.45);--win-shadow:0 24px 70px rgba(40,30,80,.25),0 0 0 1px rgba(0,0,0,.06)}
+.t-dark.g-on{--side:rgba(34,34,38,.58);--list:rgba(30,30,34,.64);--edit:rgba(24,24,26,.72);--card:rgba(255,255,255,.06);--pop:rgba(44,44,48,.84);--widget:rgba(30,30,34,.62);--blur:blur(28px) saturate(160%);--rim:inset 0 1px 0 rgba(255,255,255,.2),inset 0 0 0 1px rgba(255,255,255,.08)}
+.glassy{backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
+.i{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.i-b{stroke-width:3}
+.i-thin{fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;flex:none}
+.t2{color:var(--text2)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+button{font-family:inherit}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.lbl{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
+.btn-ic{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:var(--text2);cursor:pointer;padding:0}
+.btn-ic:hover{background:var(--hover);color:var(--text)}
+.btn-ic.is-on{color:var(--acc);background:var(--chip)}
+.cap{display:inline-flex;align-items:center;justify-content:center;width:46px;height:40px;border:0;background:transparent;color:var(--text);padding:0}
+.cap:hover{background:var(--hover)}
+.cap-x:hover{background:#C42B1C;color:#FFFFFF}
+.tl{width:12px;height:12px;border-radius:50%;border:0;padding:0;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.2)}
+.nav{display:flex;align-items:center;gap:10px;width:100%;height:34px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:var(--text);font-size:13px;font-weight:500;cursor:pointer;text-align:left}
+.nav:hover{background:var(--hover)}
+.nav.is-on{background:var(--side-sel)}
+.nav-ic{display:inline-flex;color:var(--acc)}
+.nav-l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav-c{color:var(--text2);font-size:12px;font-variant-numeric:tabular-nums}
+.row{display:block;width:100%;text-align:left;border:0;background:transparent;color:var(--text);padding:10px 12px;border-radius:10px;cursor:pointer;margin-bottom:2px}
+.row:hover{background:var(--hover)}
+.row.is-sel{background:var(--sel);color:var(--seltext)}
+.row.is-sel .t2{color:var(--seltext2)}
+.field{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border-radius:9px;background:var(--field);color:var(--text2)}
+.plain{flex:1;min-width:0;border:0;background:transparent;font-family:inherit;color:var(--text);outline:none;padding:0}
+.plain::placeholder{color:var(--text2)}
+.title-in{display:block;width:100%;box-sizing:border-box;border:0;background:transparent;font-family:inherit;font-size:26px;font-weight:700;letter-spacing:-.01em;color:var(--text);padding:0;margin:0 0 14px;outline:none}
+.title-in::placeholder{color:var(--text2)}
+.chk{flex:none;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:1.5px solid var(--text2);background:transparent;color:transparent;cursor:pointer;padding:0;transition:background .15s,border-color .15s}
+.chk.is-done{background:var(--accfill);border-color:var(--accfill);color:var(--acctick)}
+.chk-sm{width:20px;height:20px}
+.chk-t.is-done{color:var(--text2)}
+.chk-add{flex:none;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:1.5px dashed var(--text2);color:var(--text2);box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 11px;border-radius:999px;background:var(--chip);color:var(--acc)}
+.seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px;padding:2px;border-radius:9px;background:var(--field)}
+.seg-b{display:flex;align-items:center;justify-content:center;gap:6px;height:28px;border:0;border-radius:7px;background:transparent;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer}
+.seg-b.is-on{background:var(--seg-on);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.18)}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;width:100%;height:32px;padding:0 4px;border:0;border-radius:8px;background:transparent;color:var(--text);font-size:13px;font-weight:500;cursor:pointer}
+.toggle-row:hover{background:var(--hover)}
+.sw{position:relative;flex:none;width:36px;height:22px;border-radius:999px;background:var(--sw-off);transition:background .2s}
+.sw .knob{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#FFFFFF;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .2s}
+.sw.is-on{background:var(--accfill)}
+.sw.is-on .knob{transform:translateX(14px)}
+.wbtn{display:flex;align-items:center;gap:8px;width:100%;height:34px;padding:0 10px;border:1px solid var(--sep);border-radius:9px;background:var(--field);color:var(--text);font-size:13px;font-weight:600;cursor:pointer}
+.wbtn .nav-ic{color:var(--acc)}
+.wbtn.is-on{border-color:var(--acc)}
+.pill{flex:none;height:28px;padding:0 12px;border-radius:999px;border:0;background:var(--accfill);color:var(--acctick);font-size:12px;font-weight:700;cursor:pointer}
+.pill.is-on{background:var(--field);color:var(--text)}
+.w-tile{flex:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;background:var(--chip);color:var(--acc)}
+.btn-acc{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 14px;border:0;border-radius:999px;background:var(--accfill);color:var(--acctick);font-size:13px;font-weight:600;cursor:pointer}
+.btn-soft{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 14px;border:0;border-radius:999px;background:var(--field);color:var(--text);font-size:13px;font-weight:600;cursor:pointer}
+.btn-soft:hover{background:var(--hover)}
+.wk{text-align:center;font-size:12px;font-weight:600;padding:4px 0}
+.day{position:relative;height:60px;border:0;border-radius:10px;background:transparent;color:var(--text);font-size:14px;font-weight:500;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:5px;padding:7px 0 0;cursor:pointer}
+.day:hover{background:var(--hover)}
+.day.is-out{color:var(--text2);opacity:.55;cursor:default}
+.day.is-out:hover{background:transparent}
+.day .num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%}
+.day.is-today .num{background:var(--accfill);color:var(--acctick);font-weight:700}
+.day.is-sel{background:var(--sel);color:var(--seltext)}
+.ev-dot{width:6px;height:6px;border-radius:50%;background:var(--acc)}
+.day.is-sel .ev-dot{background:var(--seltext)}
+.badge{display:inline-block;margin-top:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--field);color:var(--text2)}
+.badge.is-rem{background:var(--chip);color:var(--acc)}
+.widget{position:relative;border-radius:22px;background:var(--widget);box-shadow:var(--w-shadow),var(--rim);padding:16px 18px;color:var(--text)}
+.w-x{position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;border:0;background:var(--field);color:var(--text2);cursor:pointer;padding:0}
+.w-x:hover{color:var(--text)}
+.t-light .pc-amarelo{--pi:#FFE57A;--pit:#3D3000}
+.t-light .pc-verde{--pi:#C6EFB3;--pit:#173D0E}
+.t-light .pc-rosa{--pi:#FFCADC;--pit:#4A1027}
+.t-light .pc-azul{--pi:#C2E2FF;--pit:#0D2E4F}
+.t-dark .pc-amarelo{--pi:#5C4A0C;--pit:#FFF0BF}
+.t-dark .pc-verde{--pi:#284A1F;--pit:#DDF6D0}
+.t-dark .pc-rosa{--pi:#5B2238;--pit:#FFD9E7}
+.t-dark .pc-azul{--pi:#1C3D5E;--pit:#D7ECFF}
+.postit{position:relative;background:var(--pi);color:var(--pit);border-radius:14px;box-shadow:var(--w-shadow);padding:14px 16px 16px}
+.g-on .postit{background:color-mix(in srgb,var(--pi) 80%,transparent);box-shadow:var(--w-shadow),inset 0 1px 0 rgba(255,255,255,.35)}
+.postit .chk{width:18px;height:18px;border-color:var(--pit)}
+.postit .chk.is-done{background:var(--pit);border-color:var(--pit);color:var(--pi)}
+.postit .chk-t.is-done{color:var(--pit);text-decoration:line-through}
+.postit .w-x{background:transparent;color:var(--pit)}
+.dot{width:16px;height:16px;border-radius:50%;border:1px solid rgba(0,0,0,.22);background:var(--pi);padding:0;cursor:pointer}
+.dot.is-on{box-shadow:0 0 0 2px var(--pit)}
+.bar{height:6px;border-radius:999px;background:var(--field);overflow:hidden}
+.bar>span{display:block;height:100%;border-radius:999px;background:var(--accfill);transition:width .3s}
+@media (max-width:880px){.root{padding:16px!important}.win{flex-direction:column!important;height:auto!important}.pane{flex:1 1 auto!important;border-right:0!important;border-bottom:1px solid var(--sep)}.pane-scroll{max-height:460px}.wmenu{left:12px!important;right:12px;bottom:auto!important;top:56px;width:auto!important}}
+</style>
+</helmet>
+<div class="{{ rootCls }}" style="position: relative; min-height: 900px; box-sizing: border-box; padding: 48px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 32px">
+
+  <div class="win" style="position: relative; flex: 999 1 760px; min-width: 0; height: 760px; display: flex; border-radius: 14px; overflow: hidden; box-shadow: var(--win-shadow)">
+
+    <sc-if value="{{ sideOpen }}" hint-placeholder-val="{{ true }}">
+      <aside class="pane glassy" aria-label="Pastas e atalhos" style="flex: 0 0 224px; min-width: 0; display: flex; flex-direction: column; background: var(--side); border-right: 1px solid var(--sep)">
+        <div style="height: 52px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 16px">
+          <sc-if value="{{ mac }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; gap: 8px">
+              <button class="tl" style="background: #FF5F57" aria-label="Fechar janela"></button>
+              <button class="tl" style="background: #FEBC2E" aria-label="Minimizar janela"></button>
+              <button class="tl" style="background: #28C840" aria-label="Maximizar janela"></button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ win }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <img src="/_blob/21548fa2c08957469f8ec433e186b290" alt="" style="width: 20px; height: 20px">
+              <span style="font-size: 13px; font-weight: 600">brainote</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <nav aria-label="Navegação" style="flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 12px">
+          <div class="lbl" style="padding: 6px 10px 6px">Atalhos</div>
+          <button class="{{ nav.all.cls }}" aria-current="{{ nav.all.current }}" onClick="{{ nav.all.pick }}">
+            <span class="nav-ic"><svg class="i" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5"></rect><path d="M9 8h6M9 12h6M9 16h3.5"></path></svg></span>
+            <span class="nav-l">Todas as notas</span>
+            <span class="nav-c">{{ nav.all.count }}</span>
+          </button>
+          <button class="{{ nav.checklists.cls }}" aria-current="{{ nav.checklists.current }}" onClick="{{ nav.checklists.pick }}">
+            <span class="nav-ic"><svg class="i" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 6.5l1.5 1.5L8.5 5M4 12.5L5.5 14l3-3M4 18.5L5.5 20l3-3"></path><path d="M12 7h8M12 13h8M12 19h8"></path></svg></span>
+            <span class="nav-l">Checklists</span>
+            <span class="nav-c">{{ nav.checklists.count }}</span>
+          </button>
+          <button class="{{ nav.agenda.cls }}" aria-current="{{ nav.agenda.current }}" onClick="{{ nav.agenda.pick }}">
+            <span class="nav-ic"><svg class="i" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"></rect><path d="M3.5 10h17M8 3v4M16 3v4"></path></svg></span>
+            <span class="nav-l">Agenda</span>
+            <span class="nav-c">{{ nav.agenda.count }}</span>
+          </button>
+          <button class="{{ nav.reminders.cls }}" aria-current="{{ nav.reminders.current }}" onClick="{{ nav.reminders.pick }}">
+            <span class="nav-ic"><svg class="i" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"></path><path d="M10 20.5a2 2 0 0 0 4 0"></path></svg></span>
+            <span class="nav-l">Lembretes</span>
+            <span class="nav-c">{{ nav.reminders.count }}</span>
+          </button>
+
+          <div class="lbl" style="padding: 18px 10px 6px">Pastas</div>
+          <sc-for list="{{ folders }}" as="f" hint-placeholder-count="3">
+            <button class="{{ f.cls }}" aria-current="{{ f.current }}" onClick="{{ f.pick }}">
+              <span class="nav-ic"><svg class="i" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h3.8l2 2h7.2a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"></path></svg></span>
+              <span class="nav-l">{{ f.name }}</span>
+              <span class="nav-c">{{ f.count }}</span>
+            </button>
+          </sc-for>
+          <button class="nav" style="margin-top: 4px" onClick="{{ newFolder }}">
+            <span class="nav-ic"><svg class="i" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h3.8l2 2h7.2a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"></path><path d="M12 11v5M9.5 13.5h5"></path></svg></span>
+            <span class="nav-l t2">Nova pasta</span>
+          </button>
+        </nav>
+
+        <div style="flex: none; padding: 12px; border-top: 1px solid var(--sep); display: flex; flex-direction: column; gap: 10px">
+          <div class="lbl" style="padding: 0 2px">Aparência</div>
+          <div class="seg" role="group" aria-label="Tema">
+            <button class="{{ segLight }}" aria-pressed="{{ isLight }}" onClick="{{ setLight }}">
+              <svg class="i" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"></path></svg>
+              Claro
+            </button>
+            <button class="{{ segDark }}" aria-pressed="{{ isDark }}" onClick="{{ setDark }}">
+              <svg class="i" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 1 1 9.5 4.5a6 6 0 0 0 10 10z"></path></svg>
+              Escuro
+            </button>
+          </div>
+          <button class="toggle-row" role="switch" aria-checked="{{ glassOn }}" onClick="{{ toggleGlass }}">
+            <span style="display: flex; align-items: center; gap: 8px">
+              <svg class="i" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 3.5s6 6.3 6 10.5a6 6 0 0 1-12 0c0-4.2 6-10.5 6-10.5z"></path><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5"></path></svg>
+              Efeito vidro
+            </span>
+            <span class="{{ swCls }}"><span class="knob"></span></span>
+          </button>
+          <button class="{{ wbtnCls }}" aria-expanded="{{ menuExpanded }}" onClick="{{ toggleMenu }}">
+            <span class="nav-ic"><svg class="i" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"></rect><rect x="13.5" y="3.5" width="7" height="7" rx="2"></rect><rect x="3.5" y="13.5" width="7" height="7" rx="2"></rect><path d="M17 14v6M14 17h6"></path></svg></span>
+            <span>Adicionar widget</span>
+          </button>
+        </div>
+      </aside>
+    </sc-if>
+
+    <sc-if value="{{ isNotes }}" hint-placeholder-val="{{ true }}">
+      <section class="pane glassy" aria-label="Lista de notas" style="flex: 0 0 292px; min-width: 0; display: flex; flex-direction: column; background: var(--list); border-right: 1px solid var(--sep)">
+        <div style="height: 52px; flex: none; display: flex; align-items: center; gap: 2px; padding: 0 10px">
+          <button class="btn-ic" aria-label="Mostrar ou ocultar a barra lateral" onClick="{{ toggleSide }}"><svg class="i" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9.5 4v16"></path></svg></button>
+          <span style="flex: 1"></span>
+          <button class="btn-ic" aria-label="Apagar nota" onClick="{{ deleteNote }}"><svg class="i" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 7h16"></path><path d="M10 11v6M14 11v6"></path><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"></path><path d="M9 7V4.5h6V7"></path></svg></button>
+          <button class="btn-ic" aria-label="Nova nota" onClick="{{ newNote }}"><svg class="i" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"></path><path d="M17.5 3.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"></path></svg></button>
+        </div>
+        <div style="flex: none; padding: 0 14px 8px">
+          <div class="field">
+            <svg class="i" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="M20 20l-4.2-4.2"></path></svg>
+            <label class="sr-only" for="busca">Buscar notas</label>
+            <input id="busca" class="plain" type="search" placeholder="Buscar" value="{{ query }}" onChange="{{ onSearch }}" style="font-size: 13px">
+          </div>
+        </div>
+        <div style="flex: none; padding: 8px 22px 4px">
+          <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em">{{ sectionTitle }}</h2>
+          <p class="t2" style="margin: 2px 0 0; font-size: 12px">{{ countLabel }}</p>
+        </div>
+        <div class="pane-scroll" style="flex: 1; min-height: 0; overflow-y: auto; padding: 4px 10px 14px">
+          <sc-for list="{{ groups }}" as="g" hint-placeholder-count="2">
+            <div class="lbl" style="padding: 12px 12px 6px">{{ g.label }}</div>
+            <sc-for list="{{ g.notes }}" as="n" hint-placeholder-count="2">
+              <button class="{{ n.cls }}" aria-current="{{ n.current }}" onClick="{{ n.pick }}">
+                <span style="display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ n.title }}</span>
+                <span style="display: flex; gap: 8px; margin-top: 2px; font-size: 13px; min-width: 0">
+                  <span class="t2" style="flex: none; font-weight: 500">{{ n.meta }}</span>
+                  <span class="t2" style="min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ n.prev }}</span>
+                </span>
+                <sc-if value="{{ n.showFolder }}" hint-placeholder-val="{{ true }}">
+                  <span class="t2" style="display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 12px">
+                    <svg class="i" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h3.8l2 2h7.2a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"></path></svg>
+                    {{ n.folder }}
+                  </span>
+                </sc-if>
+              </button>
+            </sc-for>
+          </sc-for>
+          <sc-if value="{{ listEmpty }}" hint-placeholder-val="{{ false }}">
+            <p class="t2" style="margin: 24px 12px; font-size: 13px; text-align: center">Nenhuma nota encontrada.</p>
+          </sc-if>
+        </div>
+      </section>
+
+      <section class="pane glassy" aria-label="Editor da nota" style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--edit)">
+        <div style="height: 52px; flex: none; display: flex; align-items: center; gap: 2px; padding-left: 14px">
+          <button class="btn-ic" aria-label="Formatar texto"><span style="font-size: 15px; font-weight: 600; letter-spacing: -0.02em">Aa</span></button>
+          <button class="btn-ic" aria-label="Inserir item de checklist" onClick="{{ addCheck }}"><svg class="i" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 6.5l1.5 1.5L8.5 5M4 12.5L5.5 14l3-3M4 18.5L5.5 20l3-3"></path><path d="M12 7h8M12 13h8M12 19h8"></path></svg></button>
+          <button class="{{ bellCls }}" aria-label="Lembrete nesta nota" aria-pressed="{{ bellPressed }}" onClick="{{ toggleBell }}"><svg class="i" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"></path><path d="M10 20.5a2 2 0 0 0 4 0"></path></svg></button>
+          <button class="{{ pinCls }}" aria-label="Fixar como post-it na área de trabalho" aria-pressed="{{ pinPressed }}" onClick="{{ pinPostit }}"><svg class="i" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 4h14a1 1 0 0 1 1 1v9.5L14.5 20H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"></path><path d="M14 20v-4.5a1 1 0 0 1 1-1h5"></path></svg></button>
+          <span style="flex: 1"></span>
+          <sc-if value="{{ win }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; align-self: flex-start">
+              <button class="cap" aria-label="Minimizar"><svg class="i-thin" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M1 6h10"></path></svg></button>
+              <button class="cap" aria-label="Maximizar"><svg class="i-thin" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" rx="1.5"></rect></svg></button>
+              <button class="cap cap-x" aria-label="Fechar"><svg class="i-thin" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M1.5 1.5l9 9M10.5 1.5l-9 9"></path></svg></button>
+            </div>
+          </sc-if>
+        </div>
+        <div class="pane-scroll" style="flex: 1; min-height: 0; overflow-y: auto; padding: 4px clamp(20px, 6%, 64px) 40px">
+          <sc-if value="{{ hasNote }}" hint-placeholder-val="{{ true }}">
+            <div style="max-width: 680px; margin: 0 auto">
+              <p class="t2" style="margin: 0 0 18px; font-size: 12px; text-align: center">{{ ed.date }}</p>
+              <sc-if value="{{ ed.hasReminder }}" hint-placeholder-val="{{ false }}">
+                <p style="margin: 0 0 16px">
+                  <span class="chip">
+                    <svg class="i" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"></path><path d="M10 20.5a2 2 0 0 0 4 0"></path></svg>
+                    Lembrete · {{ ed.reminder }}
+                  </span>
+                </p>
+              </sc-if>
+              <label class="sr-only" for="titulo">Título da nota</label>
+              <input id="titulo" class="title-in" placeholder="Título" value="{{ ed.title }}" onChange="{{ ed.onTitle }}">
+              <sc-for list="{{ ed.blocks }}" as="b" hint-placeholder-count="4">
+                <sc-if value="{{ b.isH }}" hint-placeholder-val="{{ false }}">
+                  <h3 style="margin: 18px 0 6px; font-size: 18px; font-weight: 700">{{ b.text }}</h3>
+                </sc-if>
+                <sc-if value="{{ b.isP }}" hint-placeholder-val="{{ true }}">
+                  <p style="margin: 0 0 8px; font-size: 15px; line-height: 1.6">{{ b.text }}</p>
+                </sc-if>
+                <sc-if value="{{ b.isC }}" hint-placeholder-val="{{ false }}">
+                  <div style="display: flex; align-items: flex-start; gap: 12px; padding: 5px 0">
+                    <button class="{{ b.cls }}" aria-pressed="{{ b.pressed }}" aria-label="{{ b.label }}" onClick="{{ b.toggle }}"><svg class="i i-b" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M6 12.5l4 4 8-8.5"></path></svg></button>
+                    <span class="{{ b.tcls }}" style="font-size: 15px; line-height: 22px">{{ b.text }}</span>
+                  </div>
+                </sc-if>
+              </sc-for>
+              <div style="display: flex; align-items: center; gap: 12px; padding: 5px 0; margin-top: 2px">
+                <span class="chk-add" aria-hidden="true"><svg class="i" viewBox="0 0 24 24" width="12" height="12"><path d="M12 6v12M6 12h12"></path></svg></span>
+                <label class="sr-only" for="novo-item">Novo item do checklist</label>
+                <input id="novo-item" class="plain" placeholder="Adicionar item ao checklist (Enter)" value="{{ newItem }}" onChange="{{ onNewItem }}" onKeyDown="{{ onNewItemKey }}" style="font-size: 15px; line-height: 22px">
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noNote }}" hint-placeholder-val="{{ false }}">
+            <p class="t2" style="margin: 120px 0 0; text-align: center; font-size: 14px">Selecione ou crie uma nota.</p>
+          </sc-if>
+        </div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{ isAgenda }}" hint-placeholder-val="{{ false }}">
+      <section class="pane glassy" aria-label="Agenda" style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--edit)">
+        <div style="height: 52px; flex: none; display: flex; align-items: center; gap: 8px; padding-left: 10px">
+          <button class="btn-ic" aria-label="Mostrar ou ocultar a barra lateral" onClick="{{ toggleSide }}"><svg class="i" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9.5 4v16"></path></svg></button>
+          <button class="btn-soft" onClick="{{ goToday }}">Hoje</button>
+          <span style="flex: 1"></span>
+          <sc-if value="{{ win }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; align-self: flex-start">
+              <button class="cap" aria-label="Minimizar"><svg class="i-thin" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M1 6h10"></path></svg></button>
+              <button class="cap" aria-label="Maximizar"><svg class="i-thin" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" rx="1.5"></rect></svg></button>
+              <button class="cap cap-x" aria-label="Fechar"><svg class="i-thin" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M1.5 1.5l9 9M10.5 1.5l-9 9"></path></svg></button>
+            </div>
+          </sc-if>
+        </div>
+        <div class="pane-scroll" style="flex: 1; min-height: 0; overflow-y: auto; padding: 4px 28px 28px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 28px">
+          <div style="flex: 999 1 380px; min-width: 0">
+            <h2 style="margin: 0 0 14px; font-size: 26px; font-weight: 700; letter-spacing: -0.02em">Novembro <span class="t2" style="font-weight: 500">2026</span></h2>
+            <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-bottom: 4px">
+              <span class="t2 wk">Dom</span>
+              <span class="t2 wk">Seg</span>
+              <span class="t2 wk">Ter</span>
+              <span class="t2 wk">Qua</span>
+              <span class="t2 wk">Qui</span>
+              <span class="t2 wk">Sex</span>
+              <span class="t2 wk">Sáb</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px">
+              <sc-for list="{{ cells }}" as="c" hint-placeholder-count="35">
+                <button class="{{ c.cls }}" aria-label="{{ c.aria }}" aria-pressed="{{ c.pressed }}" disabled="{{ c.disabled }}" onClick="{{ c.pick }}">
+                  <span class="num">{{ c.label }}</span>
+                  <sc-if value="{{ c.has }}" hint-placeholder-val="{{ false }}">
+                    <span class="ev-dot"></span>
+                  </sc-if>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="flex: 1 1 260px; min-width: 0">
+            <div style="border-radius: 16px; background: var(--card); padding: 18px 18px 8px">
+              <p class="lbl" style="margin: 0 0 4px; color: var(--acc)">{{ dayKicker }}</p>
+              <h3 style="margin: 0 0 12px; font-size: 18px; font-weight: 700">{{ dayTitle }}</h3>
+              <sc-for list="{{ dayItems }}" as="it" hint-placeholder-count="3">
+                <div style="display: flex; gap: 12px; padding: 10px 0; border-top: 1px solid var(--sep)">
+                  <span class="t2" style="flex: none; width: 42px; font-size: 13px; font-variant-numeric: tabular-nums; padding-top: 1px">{{ it.time }}</span>
+                  <span style="flex: 1; min-width: 0">
+                    <span class="{{ it.tcls }}" style="display: block; font-size: 14px; font-weight: 500; line-height: 1.4">{{ it.title }}</span>
+                    <span class="{{ it.kcls }}">{{ it.kind }}</span>
+                  </span>
+                </div>
+              </sc-for>
+              <sc-if value="{{ dayEmpty }}" hint-placeholder-val="{{ false }}">
+                <p class="t2" style="margin: 0; padding: 12px 0 14px; border-top: 1px solid var(--sep); font-size: 13px">Nenhum compromisso neste dia.</p>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{ isRem }}" hint-placeholder-val="{{ false }}">
+      <section class="pane glassy" aria-label="Lembretes" style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--edit)">
+        <div style="height: 52px; flex: none; display: flex; align-items: center; gap: 8px; padding-left: 10px">
+          <button class="btn-ic" aria-label="Mostrar ou ocultar a barra lateral" onClick="{{ toggleSide }}"><svg class="i" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9.5 4v16"></path></svg></button>
+          <span style="flex: 1"></span>
+          <button class="btn-acc" onClick="{{ showToast }}">
+            <svg class="i" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"></path><path d="M10 20.5a2 2 0 0 0 4 0"></path></svg>
+            Simular notificação
+          </button>
+          <sc-if value="{{ win }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; align-self: flex-start; margin-left: 6px">
+              <button class="cap" aria-label="Minimizar"><svg class="i-thin" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M1 6h10"></path></svg></button>
+              <button class="cap" aria-label="Maximizar"><svg class="i-thin" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><rect x="1.5" y="1.5" width="9" height="9" rx="1.5"></rect></svg></button>
+              <button class="cap cap-x" aria-label="Fechar"><svg class="i-thin" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M1.5 1.5l9 9M10.5 1.5l-9 9"></path></svg></button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ mac }}" hint-placeholder-val="{{ false }}">
+            <span style="width: 8px"></span>
+          </sc-if>
+        </div>
+        <div class="pane-scroll" style="flex: 1; min-height: 0; overflow-y: auto; padding: 4px clamp(20px, 6%, 64px) 32px">
+          <div style="max-width: 640px; margin: 0 auto">
+            <h2 style="margin: 0 0 4px; font-size: 26px; font-weight: 700; letter-spacing: -0.02em">Lembretes</h2>
+            <p class="t2" style="margin: 0 0 6px; font-size: 13px">{{ remCount }}</p>
+            <sc-for list="{{ remGroups }}" as="g" hint-placeholder-count="3">
+              <h3 style="margin: 22px 0 4px; font-size: 15px; font-weight: 700; color: var(--acc)">{{ g.label }}</h3>
+              <sc-for list="{{ g.items }}" as="r" hint-placeholder-count="2">
+                <div style="display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--sep)">
+                  <button class="{{ r.cls }}" aria-pressed="{{ r.pressed }}" aria-label="{{ r.label }}" onClick="{{ r.toggle }}"><svg class="i i-b" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M6 12.5l4 4 8-8.5"></path></svg></button>
+                  <span style="flex: 1; min-width: 0">
+                    <span class="{{ r.tcls }}" style="display: block; font-size: 15px; line-height: 22px">{{ r.title }}</span>
+                    <span class="t2" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; font-size: 12px">
+                      <svg class="i" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>
+                      <span>{{ r.due }}</span>
+                      <sc-if value="{{ r.hasNote }}" hint-placeholder-val="{{ false }}">
+                        <span>· Nota: {{ r.note }}</span>
+                      </sc-if>
+                    </span>
+                  </span>
+                </div>
+              </sc-for>
+            </sc-for>
+          </div>
+        </div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+      <div class="glassy wmenu" role="dialog" aria-label="Widgets da área de trabalho" style="position: absolute; left: 232px; bottom: 12px; width: 300px; z-index: 6; box-sizing: border-box; background: var(--pop); border-radius: 16px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28), var(--rim); padding: 12px">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 8px">
+          <span style="font-size: 13px; font-weight: 700">Widgets na área de trabalho</span>
+          <button class="btn-ic" aria-label="Fechar menu de widgets" onClick="{{ toggleMenu }}" style="width: 26px; height: 26px"><svg class="i" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"></path></svg></button>
+        </div>
+        <sc-for list="{{ wmenu }}" as="w" hint-placeholder-count="3">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 8px 4px">
+            <span class="w-tile">
+              <sc-if value="{{ w.isPostit }}" hint-placeholder-val="{{ true }}">
+                <svg class="i" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 4h14a1 1 0 0 1 1 1v9.5L14.5 20H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"></path><path d="M14 20v-4.5a1 1 0 0 1 1-1h5"></path></svg>
+              </sc-if>
+              <sc-if value="{{ w.isChecklist }}" hint-placeholder-val="{{ false }}">
+                <svg class="i" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 6.5l1.5 1.5L8.5 5M4 12.5L5.5 14l3-3M4 18.5L5.5 20l3-3"></path><path d="M12 7h8M12 13h8M12 19h8"></path></svg>
+              </sc-if>
+              <sc-if value="{{ w.isAgenda }}" hint-placeholder-val="{{ false }}">
+                <svg class="i" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"></rect><path d="M3.5 10h17M8 3v4M16 3v4"></path></svg>
+              </sc-if>
+            </span>
+            <span style="flex: 1; min-width: 0">
+              <span style="display: block; font-size: 13px; font-weight: 600">{{ w.label }}</span>
+              <span class="t2" style="display: block; font-size: 12px; line-height: 1.35">{{ w.desc }}</span>
+            </span>
+            <button class="{{ w.acls }}" aria-label="{{ w.aria }}" onClick="{{ w.toggle }}">{{ w.action }}</button>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <div aria-hidden="true" style="position: absolute; inset: 0; z-index: 5; border-radius: 14px; box-shadow: var(--rim); pointer-events: none"></div>
+  </div>
+
+  <div aria-label="Widgets na área de trabalho" style="flex: 1 1 260px; max-width: 300px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+    <sc-if value="{{ wOn.postit }}" hint-placeholder-val="{{ true }}">
+      <div class="{{ postit.cls }}">
+        <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 10px; padding-right: 30px">
+          <sc-for list="{{ postit.colors }}" as="c" hint-placeholder-count="4">
+            <button class="{{ c.cls }}" aria-label="{{ c.label }}" aria-pressed="{{ c.pressed }}" onClick="{{ c.pick }}"></button>
+          </sc-for>
+        </div>
+        <button class="w-x" aria-label="Remover post-it da área de trabalho" onClick="{{ rmPostit }}"><svg class="i" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"></path></svg></button>
+        <p style="margin: 0 0 6px; font-size: 15px; font-weight: 700">{{ postit.title }}</p>
+        <sc-for list="{{ postit.blocks }}" as="b" hint-placeholder-count="3">
+          <sc-if value="{{ b.isT }}" hint-placeholder-val="{{ true }}">
+            <p style="margin: 0 0 4px; font-size: 13px; line-height: 1.5">{{ b.text }}</p>
+          </sc-if>
+          <sc-if value="{{ b.isC }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; align-items: flex-start; gap: 8px; padding: 3px 0">
+              <button class="{{ b.cls }}" aria-pressed="{{ b.pressed }}" aria-label="{{ b.label }}" onClick="{{ b.toggle }}"><svg class="i i-b" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><path d="M6 12.5l4 4 8-8.5"></path></svg></button>
+              <span class="{{ b.tcls }}" style="font-size: 13px; line-height: 18px">{{ b.text }}</span>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ wOn.checklist }}" hint-placeholder-val="{{ true }}">
+      <div class="widget glassy">
+        <button class="w-x" aria-label="Remover widget de checklist" onClick="{{ rmChecklist }}"><svg class="i" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"></path></svg></button>
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; color: var(--acc)">
+          <svg class="i" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 6.5l1.5 1.5L8.5 5M4 12.5L5.5 14l3-3M4 18.5L5.5 20l3-3"></path><path d="M12 7h8M12 13h8M12 19h8"></path></svg>
+          <span class="lbl" style="color: var(--acc)">Checklist</span>
+        </div>
+        <p style="margin: 0; font-size: 16px; font-weight: 700">{{ cw.title }}</p>
+        <p class="t2" style="margin: 2px 0 10px; font-size: 12px">{{ cw.progress }}</p>
+        <div class="bar" style="margin-bottom: 10px"><span style="width: {{ cw.pct }}"></span></div>
+        <sc-for list="{{ cw.items }}" as="b" hint-placeholder-count="5">
+          <div style="display: flex; align-items: flex-start; gap: 10px; padding: 4px 0">
+            <button class="{{ b.cls }} chk-sm" aria-pressed="{{ b.pressed }}" aria-label="{{ b.label }}" onClick="{{ b.toggle }}"><svg class="i i-b" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M6 12.5l4 4 8-8.5"></path></svg></button>
+            <span class="{{ b.tcls }}" style="font-size: 13px; line-height: 20px">{{ b.text }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ wOn.agenda }}" hint-placeholder-val="{{ true }}">
+      <div class="widget glassy">
+        <button class="w-x" aria-label="Remover widget de agenda" onClick="{{ rmAgenda }}"><svg class="i" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"></path></svg></button>
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px">
+          <span style="font-size: 40px; font-weight: 700; line-height: 1; letter-spacing: -0.03em">18</span>
+          <span style="display: flex; flex-direction: column; gap: 2px">
+            <span class="lbl" style="color: var(--acc)">Quarta-feira</span>
+            <span class="t2" style="font-size: 13px">novembro</span>
+          </span>
+        </div>
+        <sc-for list="{{ aw }}" as="it" hint-placeholder-count="3">
+          <div style="display: flex; gap: 10px; padding: 7px 0; border-top: 1px solid var(--sep)">
+            <span class="t2" style="flex: none; width: 40px; font-size: 12px; font-variant-numeric: tabular-nums; padding-top: 1px">{{ it.time }}</span>
+            <span style="font-size: 13px; line-height: 1.35; font-weight: 500">{{ it.title }}</span>
+          </div>
+        </sc-for>
+        <sc-if value="{{ awEmpty }}" hint-placeholder-val="{{ false }}">
+          <p class="t2" style="margin: 0; padding-top: 8px; border-top: 1px solid var(--sep); font-size: 13px">Nada mais para hoje.</p>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ noWidgets }}" hint-placeholder-val="{{ false }}">
+      <div class="widget glassy" style="text-align: center">
+        <p style="margin: 0 0 4px; font-size: 14px; font-weight: 600">Área de trabalho livre</p>
+        <p class="t2" style="margin: 0 0 12px; font-size: 13px; line-height: 1.5">Coloque um post-it, o checklist ou a agenda do dia aqui.</p>
+        <button class="btn-acc" onClick="{{ openMenu }}">Adicionar widget</button>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div class="glassy" role="status" style="position: absolute; right: 24px; bottom: 24px; z-index: 10; width: 364px; max-width: calc(100% - 48px); box-sizing: border-box; background: var(--pop); border-radius: 12px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3), var(--rim); padding: 12px 16px 16px">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px">
+        <img src="/_blob/21548fa2c08957469f8ec433e186b290" alt="" style="width: 16px; height: 16px">
+        <span style="font-size: 12px; font-weight: 600">brainote</span>
+        <span class="t2" style="font-size: 12px">· agora</span>
+        <span style="flex: 1"></span>
+        <button class="btn-ic" aria-label="Fechar notificação" onClick="{{ closeToast }}" style="width: 26px; height: 26px"><svg class="i" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"></path></svg></button>
+      </div>
+      <div style="display: flex; align-items: flex-start; gap: 12px">
+        <span class="w-tile"><svg class="i" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"></path><path d="M10 20.5a2 2 0 0 0 4 0"></path></svg></span>
+        <span style="flex: 1; min-width: 0">
+          <span style="display: block; font-size: 14px; font-weight: 700">Renovar as licenças do antivírus</span>
+          <span class="t2" style="display: block; margin-top: 2px; font-size: 13px">Lembrete · Hoje, 16:00 · Tarefas da semana</span>
+        </span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px">
+        <button class="btn-acc" style="justify-content: center" onClick="{{ completeToast }}">Concluir</button>
+        <button class="btn-soft" style="justify-content: center" onClick="{{ closeToast }}">Adiar 10 min</button>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"botoesJanela":{"editor":"enum","options":["Windows","Mac"],"default":"Windows","section":"Janela"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  initial() {
+    return {
+      theme: 'light', glass: true, section: 'all', noteId: 'n1', query: '', sideOpen: true,
+      day: 18, wOn: { postit: true, checklist: true, agenda: true }, menu: false,
+      postitId: 'n7', postitColor: 'amarelo', toast: false, newItem: '', seq: 1,
+      folders: [
+        { id: 'trabalho', name: 'Trabalho' },
+        { id: 'pessoal', name: 'Pessoal' },
+        { id: 'ideias', name: 'Ideias' }
+      ],
+      notes: [
+        { id: 'n1', folder: 'trabalho', pinned: true, when: 'hoje', time: '10:40', day: '18/11', date: '18 de novembro de 2026 às 10:40', title: 'Tarefas da semana', reminder: 'Hoje, 16:00', blocks: [
+          { id: 'n1p', t: 'p', x: 'Prioridades até sexta-feira.' },
+          { id: 'c1', t: 'c', x: 'Conferir o backup do servidor de arquivos', d: true },
+          { id: 'c2', t: 'c', x: 'Renovar as licenças do antivírus', d: false },
+          { id: 'c3', t: 'c', x: 'Trocar o toner da impressora do 2º andar', d: true },
+          { id: 'c4', t: 'c', x: 'Atualizar o inventário de notebooks', d: false },
+          { id: 'c5', t: 'c', x: 'Testar a VPN dos usuários externos', d: false }
+        ] },
+        { id: 'n7', folder: 'pessoal', pinned: true, when: 'hoje', time: '08:05', day: '18/11', date: '18 de novembro de 2026 às 08:05', title: 'Recado rápido', reminder: '', blocks: [
+          { id: 'n7a', t: 'p', x: 'Buscar a encomenda na portaria antes das 18h.' },
+          { id: 'n7b', t: 'p', x: 'Levar o carregador do notebook amanhã.' }
+        ] },
+        { id: 'n2', folder: 'trabalho', pinned: false, when: 'hoje', time: '09:15', day: '18/11', date: '18 de novembro de 2026 às 09:15', title: 'Reunião de alinhamento — TI', reminder: '', blocks: [
+          { id: 'n2h', t: 'h', x: 'Pauta' },
+          { id: 'n2a', t: 'p', x: '• Status dos chamados abertos' },
+          { id: 'n2b', t: 'p', x: '• Orçamento de novos monitores' },
+          { id: 'n2c', t: 'p', x: '• Cronograma de troca dos switches' },
+          { id: 'n2i', t: 'h', x: 'Próximos passos' },
+          { id: 'e1', t: 'c', x: 'Enviar a cotação dos monitores', d: false },
+          { id: 'e2', t: 'c', x: 'Agendar a janela de manutenção', d: false }
+        ] },
+        { id: 'n3', folder: 'pessoal', pinned: false, when: 'ontem', time: '19:32', day: '17/11', date: '17 de novembro de 2026 às 19:32', title: 'Lista de mercado', reminder: '', blocks: [
+          { id: 'm1', t: 'c', x: 'Café', d: true },
+          { id: 'm2', t: 'c', x: 'Pão integral', d: false },
+          { id: 'm3', t: 'c', x: 'Frutas da semana', d: false },
+          { id: 'm4', t: 'c', x: 'Detergente', d: false }
+        ] },
+        { id: 'n4', folder: 'ideias', pinned: false, when: 'ontem', time: '13:10', day: '17/11', date: '17 de novembro de 2026 às 13:10', title: 'Ideias para o app', reminder: '', blocks: [
+          { id: 'n4a', t: 'p', x: 'Atalho global para criar uma nota rápida.' },
+          { id: 'n4b', t: 'p', x: 'Sincronizar a agenda com o Outlook numa segunda versão.' },
+          { id: 'n4c', t: 'p', x: 'Exportar notas em PDF.' }
+        ] },
+        { id: 'n5', folder: 'trabalho', pinned: false, when: 'semana', time: '16:20', day: '14/11', date: '14 de novembro de 2026 às 16:20', title: 'Checklist — novo colaborador', reminder: '', blocks: [
+          { id: 'k1', t: 'c', x: 'Criar usuário no AD', d: true },
+          { id: 'k2', t: 'c', x: 'Liberar e-mail e Teams', d: true },
+          { id: 'k3', t: 'c', x: 'Preparar o notebook', d: false },
+          { id: 'k4', t: 'c', x: 'Cadastrar o crachá de acesso', d: false }
+        ] },
+        { id: 'n6', folder: 'pessoal', pinned: false, when: 'semana', time: '21:05', day: '12/11', date: '12 de novembro de 2026 às 21:05', title: 'Planejamento de férias', reminder: '', blocks: [
+          { id: 'n6a', t: 'p', x: 'Ver passagens para janeiro.' },
+          { id: 'n6b', t: 'p', x: 'Reservar a hospedagem até 10/12.' }
+        ] }
+      ],
+      reminders: [
+        { id: 'r1', title: 'Renovar as licenças do antivírus', day: 18, time: '16:00', note: 'Tarefas da semana', done: false },
+        { id: 'r2', title: 'Pagar a conta de luz', day: 19, time: '09:00', note: '', done: false },
+        { id: 'r3', title: 'Entregar o inventário de notebooks', day: 20, time: '10:00', note: 'Tarefas da semana', done: false },
+        { id: 'r4', title: 'Backup mensal do servidor', day: 30, time: '08:00', note: '', done: false },
+        { id: 'r5', title: 'Enviar o relatório de chamados', day: 17, time: '17:00', note: '', done: true }
+      ]
+    };
+  }
+
+  events() {
+    return {
+      12: [{ time: '10:00', title: 'Troca do switch do 1º andar' }],
+      18: [{ time: '09:15', title: 'Reunião de alinhamento — TI' }, { time: '14:00', title: 'Visita técnica da operadora de internet' }],
+      19: [{ time: '11:00', title: 'Treinamento da nova rede Wi-Fi' }],
+      23: [{ time: '08:30', title: 'Manutenção preventiva do rack' }],
+      25: [{ time: '15:00', title: 'Reunião com o fornecedor de impressoras' }]
+    };
+  }
+
+  st() {
+    if (!this._init) this._init = this.initial();
+    return Object.assign({}, this._init, this.state || {});
+  }
+
+  mapNote(id, fn) {
+    const s = this.st();
+    return s.notes.map((n) => (n.id === id ? fn(n) : n));
+  }
+
+  toggleCheck(nid, bid) {
+    this.setState({ notes: this.mapNote(nid, (n) => Object.assign({}, n, { blocks: n.blocks.map((b) => (b.id === bid ? Object.assign({}, b, { d: !b.d }) : b)) })) });
+  }
+
+  toggleReminder(rid) {
+    const s = this.st();
+    this.setState({ reminders: s.reminders.map((r) => (r.id === rid ? Object.assign({}, r, { done: !r.done }) : r)) });
+  }
+
+  chk(nid, b) {
+    return {
+      text: b.x,
+      done: !!b.d,
+      cls: 'chk' + (b.d ? ' is-done' : ''),
+      tcls: 'chk-t' + (b.d ? ' is-done' : ''),
+      pressed: b.d ? 'true' : 'false',
+      label: (b.d ? 'Desmarcar: ' : 'Concluir: ') + b.x,
+      toggle: () => this.toggleCheck(nid, b.id)
+    };
+  }
+
+  newNote() {
+    const s = this.st();
+    const id = 'nova' + s.seq;
+    const folder = s.folders.some((f) => f.id === s.section) ? s.section : 'pessoal';
+    const n = { id: id, folder: folder, pinned: false, when: 'hoje', time: 'Agora', day: '18/11', date: 'Hoje, agora', title: 'Nova nota', reminder: '', blocks: [] };
+    const section = (s.section === 'agenda' || s.section === 'reminders' || s.section === 'checklists') ? 'all' : s.section;
+    this.setState({ notes: [n].concat(s.notes), noteId: id, seq: s.seq + 1, query: '', section: section });
+  }
+
+  deleteNote() {
+    const id = this._cur;
+    if (!id) return;
+    const s = this.st();
+    this.setState({ notes: s.notes.filter((n) => n.id !== id), noteId: null });
+  }
+
+  addCheck() {
+    const id = this._cur;
+    if (!id) return;
+    const s = this.st();
+    const nb = { id: 'i' + s.seq, t: 'c', x: 'Novo item', d: false };
+    this.setState({ seq: s.seq + 1, notes: this.mapNote(id, (n) => Object.assign({}, n, { blocks: n.blocks.concat([nb]) })) });
+  }
+
+  addItem() {
+    const id = this._cur;
+    const s = this.st();
+    const v = (s.newItem || '').trim();
+    if (!id || !v) return;
+    const nb = { id: 'i' + s.seq, t: 'c', x: v, d: false };
+    this.setState({ seq: s.seq + 1, newItem: '', notes: this.mapNote(id, (n) => Object.assign({}, n, { blocks: n.blocks.concat([nb]) })) });
+  }
+
+  setTitle(value) {
+    const id = this._cur;
+    if (!id) return;
+    this.setState({ notes: this.mapNote(id, (n) => Object.assign({}, n, { title: value })) });
+  }
+
+  toggleBell() {
+    const id = this._cur;
+    if (!id) return;
+    this.setState({ notes: this.mapNote(id, (n) => Object.assign({}, n, { reminder: n.reminder ? '' : 'Hoje, 18:00' })) });
+  }
+
+  pinPostit() {
+    const id = this._cur;
+    if (!id) return;
+    const s = this.st();
+    this.setState({ postitId: id, wOn: Object.assign({}, s.wOn, { postit: true }) });
+  }
+
+  toggleWidget(k) {
+    const s = this.st();
+    const next = Object.assign({}, s.wOn);
+    next[k] = !next[k];
+    this.setState({ wOn: next });
+  }
+
+  completeToast() {
+    const s = this.st();
+    this.setState({
+      toast: false,
+      reminders: s.reminders.map((r) => (r.id === 'r1' ? Object.assign({}, r, { done: true }) : r)),
+      notes: this.mapNote('n1', (n) => Object.assign({}, n, { blocks: n.blocks.map((b) => (b.id === 'c2' ? Object.assign({}, b, { d: true }) : b)) }))
+    });
+  }
+
+  newFolder() {
+    const s = this.st();
+    const id = 'pasta' + s.seq;
+    const k = s.folders.filter((f) => f.name.indexOf('Nova pasta') === 0).length;
+    this.setState({ seq: s.seq + 1, section: id, query: '', folders: s.folders.concat([{ id: id, name: k ? 'Nova pasta ' + (k + 1) : 'Nova pasta' }]) });
+  }
+
+  renderVals() {
+    const s = this.st();
+    const mac = (this.props.botoesJanela ?? 'Windows') === 'Mac';
+    const dark = s.theme === 'dark';
+    const fname = (id) => { const f = s.folders.find((x) => x.id === id); return f ? f.name : ''; };
+    const hasChecks = (n) => n.blocks.some((b) => b.t === 'c');
+    const isFolder = s.folders.some((f) => f.id === s.section);
+    const isAgenda = s.section === 'agenda';
+    const isRem = s.section === 'reminders';
+    const isNotes = !isAgenda && !isRem;
+
+    // notas da seção atual
+    let list = s.notes;
+    if (s.section === 'checklists') list = s.notes.filter(hasChecks);
+    else if (isFolder) list = s.notes.filter((n) => n.folder === s.section);
+    const q = (s.query || '').trim().toLowerCase();
+    if (q) list = list.filter((n) => (n.title + ' ' + n.blocks.map((b) => b.x).join(' ')).toLowerCase().indexOf(q) >= 0);
+    const cur = list.find((n) => n.id === s.noteId) || list[0] || null;
+    this._cur = isNotes && cur ? cur.id : null;
+
+    const preview = (n) => { const b = n.blocks.find((x) => x.x && x.x !== n.title); return b ? b.x.replace(/^•\s*/, '') : 'Sem texto adicional'; };
+    const when = (n) => (n.when === 'hoje' ? n.time : n.when === 'ontem' ? 'Ontem' : n.day);
+    const showFolder = !isFolder;
+    const row = (n) => {
+      const sel = !!cur && cur.id === n.id;
+      return {
+        title: n.title || 'Nova nota',
+        meta: when(n),
+        prev: preview(n),
+        folder: fname(n.folder),
+        showFolder: showFolder,
+        cls: 'row' + (sel ? ' is-sel' : ''),
+        current: sel ? 'true' : 'false',
+        pick: () => this.setState({ noteId: n.id })
+      };
+    };
+    const defs = [['pin', 'Fixadas'], ['hoje', 'Hoje'], ['ontem', 'Ontem'], ['semana', 'Últimos 7 dias']];
+    const groups = defs.map((d) => ({
+      label: d[1],
+      notes: list.filter((n) => (d[0] === 'pin' ? n.pinned : (!n.pinned && n.when === d[0]))).map(row)
+    })).filter((g) => g.notes.length > 0);
+
+    // agenda
+    const wd = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+    const wdS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const ev = this.events();
+    const itemsFor = (d) => {
+      const a = (ev[d] || []).map((e) => ({ time: e.time, title: e.title, kind: 'Evento', isRem: false, done: false }));
+      const b = s.reminders.filter((r) => r.day === d).map((r) => ({ time: r.time, title: r.title, kind: 'Lembrete', isRem: true, done: r.done }));
+      return a.concat(b).sort((x, y) => (x.time < y.time ? -1 : x.time > y.time ? 1 : 0));
+    };
+    const cells = [];
+    for (let i = 0; i < 35; i++) {
+      const out = i >= 30;
+      const d = out ? i - 29 : i + 1;
+      const has = !out && itemsFor(d).length > 0;
+      const sel = !out && d === s.day;
+      cells.push({
+        label: String(d),
+        has: has,
+        cls: 'day' + (out ? ' is-out' : '') + (!out && d === 18 ? ' is-today' : '') + (sel ? ' is-sel' : ''),
+        aria: out ? d + ' de dezembro' : d + ' de novembro' + (has ? ', com compromissos' : ''),
+        pressed: sel ? 'true' : 'false',
+        disabled: out,
+        pick: () => { if (!out) this.setState({ day: d }); }
+      });
+    }
+    const dayList = itemsFor(s.day).map((it) => ({
+      time: it.time,
+      title: it.title,
+      tcls: it.done ? 'chk-t is-done' : 'chk-t',
+      kind: it.isRem ? (it.done ? 'Lembrete concluído' : 'Lembrete') : 'Evento',
+      kcls: 'badge' + (it.isRem ? ' is-rem' : '')
+    }));
+
+    // lembretes
+    const due = (r) => (r.day === 18 ? 'Hoje, ' + r.time : r.day === 19 ? 'Amanhã, ' + r.time : r.day === 17 ? 'Ontem, ' + r.time : wdS[(r.day - 1) % 7] + ', ' + r.day + '/11 · ' + r.time);
+    const rrow = (r) => ({
+      title: r.title,
+      due: due(r),
+      note: r.note,
+      hasNote: !!r.note,
+      cls: 'chk' + (r.done ? ' is-done' : ''),
+      tcls: 'chk-t' + (r.done ? ' is-done' : ''),
+      pressed: r.done ? 'true' : 'false',
+      label: (r.done ? 'Reabrir: ' : 'Concluir: ') + r.title,
+      toggle: () => this.toggleReminder(r.id)
+    });
+    const remGroups = [
+      { label: 'Hoje', items: s.reminders.filter((r) => !r.done && r.day <= 18).map(rrow) },
+      { label: 'Programados', items: s.reminders.filter((r) => !r.done && r.day > 18).map(rrow) },
+      { label: 'Concluídos', items: s.reminders.filter((r) => r.done).map(rrow) }
+    ].filter((g) => g.items.length > 0);
+    const pending = s.reminders.filter((r) => !r.done).length;
+
+    // barra lateral
+    const navItem = (id, count) => ({
+      cls: 'nav' + (s.section === id ? ' is-on' : ''),
+      current: s.section === id ? 'page' : 'false',
+      count: count,
+      pick: () => this.setState({ section: id, query: '', menu: false })
+    });
+    const nav = {
+      all: navItem('all', s.notes.length),
+      checklists: navItem('checklists', s.notes.filter(hasChecks).length),
+      agenda: navItem('agenda', itemsFor(18).filter((x) => !x.done).length),
+      reminders: navItem('reminders', pending)
+    };
+    const folders = s.folders.map((f) => Object.assign({ name: f.name }, navItem(f.id, s.notes.filter((n) => n.folder === f.id).length)));
+    const sectionTitle = s.section === 'all' ? 'Todas as notas' : s.section === 'checklists' ? 'Checklists' : fname(s.section);
+
+    // editor
+    const ed = cur ? {
+      title: cur.title,
+      date: cur.date,
+      reminder: cur.reminder || '',
+      hasReminder: !!cur.reminder,
+      blocks: cur.blocks.map((b) => (b.t === 'c'
+        ? Object.assign({ isC: true, isP: false, isH: false }, this.chk(cur.id, b))
+        : { isC: false, isP: b.t === 'p', isH: b.t === 'h', text: b.x })),
+      onTitle: (e) => this.setTitle(e.target.value)
+    } : { title: '', date: '', reminder: '', hasReminder: false, blocks: [], onTitle: () => {} };
+    const pinOn = !!cur && s.postitId === cur.id && s.wOn.postit;
+    const bellOn = !!cur && !!cur.reminder;
+
+    // widgets
+    const tasks = s.notes.find((n) => n.id === 'n1');
+    const cwItems = tasks ? tasks.blocks.filter((b) => b.t === 'c').map((b) => this.chk(tasks.id, b)) : [];
+    const doneN = cwItems.filter((x) => x.done).length;
+    const cw = {
+      title: tasks ? tasks.title : 'Checklist',
+      items: cwItems,
+      progress: doneN + ' de ' + cwItems.length + ' concluídas',
+      pct: (cwItems.length ? Math.round((doneN / cwItems.length) * 100) : 0) + '%'
+    };
+    const pn = s.notes.find((n) => n.id === s.postitId) || s.notes[0] || { id: '', title: 'Post-it', blocks: [] };
+    const postit = {
+      title: pn.title,
+      cls: 'postit glassy pc-' + s.postitColor,
+      blocks: pn.blocks.slice(0, 6).map((b) => (b.t === 'c'
+        ? Object.assign({ isC: true, isT: false }, this.chk(pn.id, b))
+        : { isC: false, isT: true, text: b.x })),
+      colors: ['amarelo', 'verde', 'rosa', 'azul'].map((c) => ({
+        cls: 'dot pc-' + c + (s.postitColor === c ? ' is-on' : ''),
+        label: 'Cor do post-it: ' + c,
+        pressed: s.postitColor === c ? 'true' : 'false',
+        pick: () => this.setState({ postitColor: c })
+      }))
+    };
+    const aw = itemsFor(18).filter((x) => !x.done).slice(0, 3);
+    const wdefs = [
+      ['postit', 'Post-it', 'Uma nota sempre visível na área de trabalho'],
+      ['checklist', 'Checklist', 'Tarefas da semana com progresso'],
+      ['agenda', 'Agenda de hoje', 'Compromissos e lembretes do dia']
+    ];
+    const wmenu = wdefs.map((w) => ({
+      label: w[1],
+      desc: w[2],
+      isPostit: w[0] === 'postit',
+      isChecklist: w[0] === 'checklist',
+      isAgenda: w[0] === 'agenda',
+      action: s.wOn[w[0]] ? 'Remover' : 'Adicionar',
+      aria: (s.wOn[w[0]] ? 'Remover widget ' : 'Adicionar widget ') + w[1],
+      acls: 'pill' + (s.wOn[w[0]] ? ' is-on' : ''),
+      toggle: () => this.toggleWidget(w[0])
+    }));
+
+    return {
+      rootCls: 'root ' + (dark ? 't-dark' : 't-light') + (s.glass ? ' g-on' : ''),
+      mac: mac,
+      win: !mac,
+      sideOpen: !!s.sideOpen,
+      isNotes: isNotes,
+      isAgenda: isAgenda,
+      isRem: isRem,
+      nav: nav,
+      folders: folders,
+      newFolder: () => this.newFolder(),
+      segLight: 'seg-b' + (dark ? '' : ' is-on'),
+      segDark: 'seg-b' + (dark ? ' is-on' : ''),
+      isLight: dark ? 'false' : 'true',
+      isDark: dark ? 'true' : 'false',
+      setLight: () => this.setState({ theme: 'light' }),
+      setDark: () => this.setState({ theme: 'dark' }),
+      glassOn: s.glass ? 'true' : 'false',
+      swCls: 'sw' + (s.glass ? ' is-on' : ''),
+      toggleGlass: () => this.setState({ glass: !this.st().glass }),
+      menuOpen: !!s.menu,
+      menuExpanded: s.menu ? 'true' : 'false',
+      wbtnCls: 'wbtn' + (s.menu ? ' is-on' : ''),
+      toggleMenu: () => this.setState({ menu: !this.st().menu }),
+      openMenu: () => this.setState({ menu: true, sideOpen: true }),
+      toggleSide: () => this.setState({ sideOpen: !this.st().sideOpen }),
+
+      query: s.query || '',
+      onSearch: (e) => this.setState({ query: e.target.value }),
+      sectionTitle: sectionTitle,
+      countLabel: list.length === 1 ? '1 nota' : list.length + ' notas',
+      groups: groups,
+      listEmpty: list.length === 0,
+      deleteNote: () => this.deleteNote(),
+      newNote: () => this.newNote(),
+
+      hasNote: !!cur,
+      noNote: !cur,
+      ed: ed,
+      bellCls: 'btn-ic' + (bellOn ? ' is-on' : ''),
+      bellPressed: bellOn ? 'true' : 'false',
+      pinCls: 'btn-ic' + (pinOn ? ' is-on' : ''),
+      pinPressed: pinOn ? 'true' : 'false',
+      addCheck: () => this.addCheck(),
+      toggleBell: () => this.toggleBell(),
+      pinPostit: () => this.pinPostit(),
+      newItem: s.newItem || '',
+      onNewItem: (e) => this.setState({ newItem: e.target.value }),
+      onNewItemKey: (e) => { if (e.key === 'Enter') { e.preventDefault(); this.addItem(); } },
+
+      cells: cells,
+      dayKicker: wd[(s.day - 1) % 7] + (s.day === 18 ? ' · Hoje' : ''),
+      dayTitle: s.day + ' de novembro',
+      dayItems: dayList,
+      dayEmpty: dayList.length === 0,
+      goToday: () => this.setState({ day: 18 }),
+
+      remGroups: remGroups,
+      remCount: pending === 1 ? '1 pendente' : pending + ' pendentes',
+      toast: !!s.toast,
+      showToast: () => this.setState({ toast: true }),
+      closeToast: () => this.setState({ toast: false }),
+      completeToast: () => this.completeToast(),
+
+      wOn: s.wOn,
+      noWidgets: !s.wOn.postit && !s.wOn.checklist && !s.wOn.agenda,
+      wmenu: wmenu,
+      postit: postit,
+      cw: cw,
+      aw: aw,
+      awEmpty: aw.length === 0,
+      rmPostit: () => this.toggleWidget('postit'),
+      rmChecklist: () => this.toggleWidget('checklist'),
+      rmAgenda: () => this.toggleWidget('agenda')
+    };
+  }
+}
+</script>
+</body>
+</html>
