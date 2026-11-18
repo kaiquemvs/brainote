@@ -155,3 +155,54 @@ button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .toast-area { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 15; }
 .toast { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 14px; border-radius: 999px; background: var(--pop); backdrop-filter: var(--blur); color: var(--text); box-shadow: 0 10px 30px rgba(0,0,0,.2), 0 0 0 1px var(--sep); font-size: 13px; font-weight: 500; }
 .toast-b { border: 0; border-radius: 999px; padding: 5px 12px; background: var(--chip); color: var(--acc); font-size: 13px; font-weight: 700; cursor: pointer; }
+
+/* Bolinha de concluir (lembretes) — mesmas medidas do protótipo */
+.i-b { stroke-width: 3; }
+.chk { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--text2); background: transparent; color: transparent; cursor: pointer; padding: 0; transition: background .15s, border-color .15s; }
+.chk.is-done { background: var(--accfill); border-color: var(--accfill); color: var(--acctick); }
+.chk-t.is-done { color: var(--text2); }
+
+/* Tela de Lembretes */
+.rem-h { margin: 22px 0 4px; font-size: 15px; font-weight: 700; color: var(--acc); }
+.rem-h-btn { display: flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 0; cursor: pointer; font-family: inherit; }
+.rem-chev { display: inline-flex; transition: transform .15s; }
+.rem-chev.is-open { transform: rotate(90deg); }
+.rem { display: flex; align-items: flex-start; gap: 12px; padding: 10px 8px; margin: 0 -8px; border-bottom: 1px solid var(--sep); border-radius: 8px; }
+.rem.is-hl { background: var(--sel); }
+.rem.is-hl .t2, .rem.is-hl .chk-t.is-done { color: var(--seltext2); }
+.rem-body { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); padding: 0; text-align: left; cursor: pointer; font-family: inherit; }
+.rem-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; font-size: 12px; }
+
+/* Botões de texto */
+.btn-acc { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--accfill); color: var(--acctick); font-size: 13px; font-weight: 600; cursor: pointer; }
+.btn-acc:disabled { opacity: .45; cursor: default; }
+.btn-soft { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--field); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; }
+.btn-soft:hover { background: var(--hover); }
+.bar > .btn-acc { align-self: center; }
+
+/* Chip do lembrete no editor */
+.chip { display: inline-flex; align-items: center; border-radius: 999px; background: var(--chip); color: var(--acc); font-size: 12px; font-weight: 600; }
+.chip-b { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: inherit; font: inherit; padding: 5px 4px 5px 11px; cursor: pointer; border-radius: 999px; }
+.chip-x { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-right: 3px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; padding: 0; }
+.chip-x:hover { background: var(--chip); }
+
+/* Janela modal */
+.dlg-back { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.28); }
+.dlg { width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; box-sizing: border-box; padding: 20px; border-radius: 16px; background: var(--pop); backdrop-filter: var(--blur); color: var(--text); box-shadow: 0 24px 60px rgba(0,0,0,.35), 0 0 0 1px var(--sep); }
+.g-on .dlg { background: var(--edit); } /* sobre o fundo escurecido, o vidro precisa de mais cor para ler bem */
+.dlg-t { margin: 0 0 16px; font-size: 18px; font-weight: 700; }
+.dlg-note { margin: 8px 4px 0; font-size: 12px; }
+.dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.toggle-row:disabled { opacity: .5; cursor: default; background: transparent; }
+
+/* Campos do formulário */
+.fld { display: grid; gap: 6px; }
+.inp { height: 34px; box-sizing: border-box; padding: 0 10px; border: 0; border-radius: 9px; background: var(--field); color: var(--text); font: inherit; font-size: 14px; color-scheme: light dark; }
+.t-light .inp { color-scheme: light; }
+.t-dark .inp { color-scheme: dark; }
+.inp:focus-visible, .btn-acc:focus-visible, .btn-soft:focus-visible, .chip-b:focus-visible, .chip-x:focus-visible, .rem-body:focus-visible, .rem-h-btn:focus-visible, .chk:focus-visible, .pick:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.inp option { background: var(--pop); color: var(--text); }
+.picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.pick { height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--field); color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer; }
+.pick.is-on { background: var(--accfill); color: var(--acctick); font-weight: 600; }
+.pick:disabled { opacity: .4; cursor: default; }

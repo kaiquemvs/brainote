@@ -4,10 +4,9 @@ import { EditorContent, useEditor, useEditorState, type Editor as TipTap } from 
 import type { ChainedCommands, JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskList } from "@tiptap/extension-list";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, type Note } from "./api";
+import { api, type Note, type Reminder } from "./api";
 import { ChecklistItem } from "./checklist";
-import { editorDate } from "./dates";
+import { editorDate, reminderWhen } from "./dates";
 import { Icon, paths } from "./icons";
 import { WindowButtons } from "./WindowButtons";
 
@@ -25,10 +24,18 @@ function initialContent(note: Note): JSONContent {
   return { type: "doc", content: lines.map((t) => ({ type: "paragraph", content: t ? [{ type: "text", text: t }] : [] })) };
 }
 
-type Props = { note: Note; autoFocus: boolean; onSaved: () => void };
+type Props = {
+  note: Note;
+  autoFocus: boolean;
+  onSaved: () => void;
+  /** próximo lembrete pendente da nota (chip e sino) */
+  reminder: Reminder | null;
+  onReminder: () => void;
+  onRemoveReminder: (r: Reminder) => void;
+};
 
 /** Montado com `key={note.id}`: cada nota tem o seu próprio editor. */
-export function Editor({ note, autoFocus, onSaved }: Props) {
+export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemoveReminder }: Props) {
   const [title, setTitle] = useState(note.title);
   const [aaOpen, setAaOpen] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -74,11 +81,12 @@ export function Editor({ note, autoFocus, onSaved }: Props) {
     if (autoFocus) titleRef.current?.focus();
   }, [autoFocus]);
 
-  // Salva o que faltar ao trocar de nota (desmontar) ou ao fechar a janela.
+  // Salva o que faltar ao trocar de nota (desmontar) ou quando a janela perde o foco
+  // (fechar só esconde na bandeja; clicar no "Sair" da bandeja já tira o foco antes).
   useEffect(() => {
-    const off = getCurrentWindow().onCloseRequested(flush);
+    addEventListener("blur", flush);
     return () => {
-      off.then((f) => f());
+      removeEventListener("blur", flush);
       flush();
     };
   }, []);
@@ -105,6 +113,9 @@ export function Editor({ note, autoFocus, onSaved }: Props) {
         >
           <Icon size={18}>{paths.checklist}</Icon>
         </button>
+        <button className={`btn-ic${reminder ? " is-on" : ""}`} aria-label="Lembrete desta nota" aria-pressed={!!reminder} onClick={onReminder}>
+          <Icon size={18}>{paths.bell}</Icon>
+        </button>
         <span className="grow" data-tauri-drag-region />
         <WindowButtons />
         {aaOpen && editor && (
@@ -121,6 +132,19 @@ export function Editor({ note, autoFocus, onSaved }: Props) {
       <div className="pane-scroll" style={{ padding: "4px clamp(20px, 6%, 64px) 40px" }}>
         <div style={{ maxWidth: 680, margin: "0 auto" }}>
           <p className="t2" style={{ margin: "0 0 18px", fontSize: 12, textAlign: "center" }}>{editorDate(new Date(note.updated_at))}</p>
+          {reminder && (
+            <p style={{ margin: "0 0 16px" }}>
+              <span className="chip">
+                <button className="chip-b" onClick={onReminder}>
+                  <Icon size={13}>{paths.bell}</Icon>
+                  Lembrete · {reminderWhen(new Date(reminder.snoozed_until ?? reminder.due_at), new Date())}
+                </button>
+                <button className="chip-x" aria-label="Remover lembrete" onClick={() => onRemoveReminder(reminder)}>
+                  <Icon size={12}>{paths.x}</Icon>
+                </button>
+              </span>
+            </p>
+          )}
           <label className="sr-only" htmlFor="titulo">Título da nota</label>
           <input
             id="titulo"

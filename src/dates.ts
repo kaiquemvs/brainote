@@ -48,3 +48,48 @@ export function rowWhen(d: Date, now: Date): string {
 export function editorDate(d: Date): string {
   return `${longDate.format(d)} às ${time(d)}`;
 }
+
+// ---------- Lembretes (4.6) ----------
+
+const WEEK = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+/** "Hoje, 16:00", "Amanhã, 09:00", "Ontem, 17:00" ou "Sex, 20/11 · 10:00". */
+export function reminderWhen(d: Date, now: Date): string {
+  const n = daysAgo(d, now);
+  if (n === 0) return `Hoje, ${time(d)}`;
+  if (n === -1) return `Amanhã, ${time(d)}`;
+  if (n === 1) return `Ontem, ${time(d)}`;
+  return `${WEEK[d.getDay()]}, ${two(d.getDate())}/${two(d.getMonth() + 1)} · ${time(d)}`;
+}
+
+export const REMINDER_GROUPS = ["Atrasados", "Hoje", "Programados", "Concluídos"] as const;
+
+export function reminderGroup(when: Date, done: boolean, now: Date): (typeof REMINDER_GROUPS)[number] {
+  if (done) return "Concluídos";
+  if (when < now) return "Atrasados";
+  return daysAgo(when, now) === 0 ? "Hoje" : "Programados";
+}
+
+/** Atalhos do formulário: Hoje 18:00, Amanhã 09:00 e Próxima segunda 09:00 (numa segunda, a da semana que vem). */
+export function quickDue(kind: "today" | "tomorrow" | "monday", now: Date): Date {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), kind === "today" ? 18 : 9);
+  if (kind === "tomorrow") d.setDate(d.getDate() + 1);
+  if (kind === "monday") d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7));
+  return d;
+}
+
+/** Como o banco guarda: hora local com fuso, ex. "2026-11-18T18:00:00-03:00". */
+export function toLocalIso(d: Date): string {
+  const off = -d.getTimezoneOffset();
+  const a = Math.abs(off);
+  const zone = `${off >= 0 ? "+" : "-"}${two(Math.floor(a / 60))}:${two(a % 60)}`;
+  return `${dateInput(d)}T${time(d)}:${two(d.getSeconds())}${zone}`;
+}
+
+/** Valor para <input type="date">: "2026-11-18". */
+export function dateInput(d: Date): string {
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+}
+
+/** Valor para <input type="time">: "09:05". */
+export const timeInput = time;

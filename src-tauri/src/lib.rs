@@ -1,10 +1,16 @@
+mod background;
 mod store;
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::window::{Effect, EffectsBuilder};
-use tauri::{Manager, State, Theme, WebviewWindow};
+use tauri::{AppHandle, Manager, State, Theme, WebviewWindow, WindowEvent};
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_window_state::StateFlags;
+
+/// Argumento que o Windows passa ao abrir o app junto com o sistema.
+const AUTOSTART_ARG: &str = "--autostart";
 
 struct Db(Mutex<Connection>);
 
@@ -127,26 +133,118 @@ fn restore_note(db: State<Db>, id: &str) -> Res<()> {
     with(&db, |c| store::restore_note(c, id))
 }
 
+// ---------- Lembretes ----------
+
+fn check_reminder(r: &store::ReminderInput) -> Res<()> {
+    if r.title.trim().is_empty() {
+        return Err("O lembrete precisa de um título.".into());
+    }
+    chrono::DateTime::parse_from_rfc3339(&r.due_at).map_err(|_| "Data do lembrete inválida.")?;
+    if !["none", "daily", "weekly", "monthly"].contains(&r.repeat.as_str()) {
+        return Err("Repetição inválida.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn list_reminders(db: State<Db>) -> Res<Vec<store::Reminder>> {
+    with(&db, store::list_reminders)
+}
+
+#[tauri::command]
+fn create_reminder(db: State<Db>, reminder: store::ReminderInput) -> Res<store::Reminder> {
+    check_reminder(&reminder)?;
+    with(&db, |c| store::create_reminder(c, &reminder))
+}
+
+#[tauri::command]
+fn update_reminder(db: State<Db>, id: &str, reminder: store::ReminderInput) -> Res<()> {
+    check_reminder(&reminder)?;
+    with(&db, |c| store::update_reminder(c, id, &reminder))
+}
+
+#[tauri::command]
+fn delete_reminder(db: State<Db>, id: &str) -> Res<()> {
+    with(&db, |c| store::delete_reminder(c, id))
+}
+
+#[tauri::command]
+fn set_reminder_done(db: State<Db>, id: &str, done: bool) -> Res<()> {
+    with(&db, |c| store::set_reminder_done(c, id, done))
+}
+
+// ---------- Iniciar com o Windows ----------
+
+#[derive(Serialize)]
+struct Autostart {
+    enabled: bool,
+    /// Só no app instalado: em desenvolvimento o Windows abriria a versão de teste ao ligar.
+    available: bool,
+}
+
+#[tauri::command]
+fn get_autostart(app: AppHandle) -> Autostart {
+    Autostart { enabled: app.autolaunch().is_enabled().unwrap_or(false), available: !cfg!(debug_assertions) }
+}
+
+#[tauri::command]
+fn set_autostart(app: AppHandle, db: State<Db>, enabled: bool) -> Res<()> {
+    if cfg!(debug_assertions) {
+        return Err("Disponível só no app instalado.".into());
+    }
+    let launcher = app.autolaunch();
+    if enabled { launcher.enable() } else { launcher.disable() }.map_err(|e| e.to_string())?;
+    with(&db, |c| store::set_setting(c, "autostart", if enabled { "1" } else { "0" }))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        // guarda posição e tamanho da janela num arquivo próprio do plugin
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // abrir o brainote de novo só traz a janela existente para frente (precisa ser o primeiro plugin)
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| background::show_main(app)))
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec![AUTOSTART_ARG])))
+        // guarda posição e tamanho da janela; quem decide se ela aparece é o setup (bandeja)
+        .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(StateFlags::all() - StateFlags::VISIBLE).build())
         .setup(|app| {
             // %APPDATA%\brainote\brainote.db
             let dir = app.path().data_dir()?.join("brainote");
             std::fs::create_dir_all(&dir)?;
             let conn = store::open(&dir.join("brainote.db"))?;
+            let main = app.get_webview_window("main").expect("janela principal");
             // aplica o vidro antes da primeira pintura, para a janela já abrir com a aparência salva
-            if let Some(w) = app.get_webview_window("main") {
-                if let Err(e) = apply_appearance(&w, &read_appearance(&conn)?) {
-                    eprintln!("efeito vidro indisponível: {e}"); // ex.: Windows 10 não tem Mica; o app segue opaco
-                }
+            if let Err(e) = apply_appearance(&main, &read_appearance(&conn)?) {
+                eprintln!("efeito vidro indisponível: {e}"); // ex.: Windows 10 antigo; o app segue opaco
+            }
+            // iniciar com o Windows vem ligado na primeira abertura do app instalado
+            if !cfg!(debug_assertions) && store::get_setting(&conn, "autostart")?.is_none() {
+                app.autolaunch().enable()?;
+                store::set_setting(&conn, "autostart", "1")?;
             }
             app.manage(Db(Mutex::new(conn)));
+
+            background::tray(app.handle())?;
+            // aberto pelo Windows ao ligar: fica só na bandeja
+            if !std::env::args().any(|a| a == AUTOSTART_ARG) {
+                background::show_main(app.handle());
+            }
+            background::start_scheduler(app.handle().clone());
             Ok(())
         })
+        // fechar a janela esconde na bandeja; o app só fecha pelo "Sair" da bandeja
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
+            list_reminders,
+            create_reminder,
+            update_reminder,
+            delete_reminder,
+            set_reminder_done,
+            get_autostart,
+            set_autostart,
             get_appearance,
             set_appearance,
             list_folders,

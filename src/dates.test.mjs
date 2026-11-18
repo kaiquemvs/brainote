@@ -1,7 +1,7 @@
 // Rodar com: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupLabel, groupNotes, rowWhen, editorDate } from "./dates.ts";
+import { groupLabel, groupNotes, rowWhen, editorDate, reminderWhen, reminderGroup, quickDue, toLocalIso } from "./dates.ts";
 
 const now = new Date(2026, 10, 18, 10, 40); // 18/11/2026 10:40
 const at = (day, month = 10, h = 9, m = 5) => new Date(2026, month, day, h, m);
@@ -30,4 +30,27 @@ test("textos de data", () => {
   assert.equal(rowWhen(at(17), now), "Ontem");
   assert.equal(rowWhen(at(4), now), "04/11");
   assert.equal(editorDate(at(18, 10, 10, 40)), "18 de novembro de 2026 às 10:40");
+});
+
+test("lembretes: textos, grupos e atalhos de data", () => {
+  // 18/11/2026 é quarta-feira
+  assert.equal(reminderWhen(at(18, 10, 16, 0), now), "Hoje, 16:00");
+  assert.equal(reminderWhen(at(19, 10, 9, 0), now), "Amanhã, 09:00");
+  assert.equal(reminderWhen(at(17, 10, 17, 0), now), "Ontem, 17:00");
+  assert.equal(reminderWhen(at(20, 10, 10, 0), now), "Sex, 20/11 · 10:00");
+
+  assert.equal(reminderGroup(at(18, 10, 9, 0), false, now), "Atrasados");
+  assert.equal(reminderGroup(at(18, 10, 16, 0), false, now), "Hoje");
+  assert.equal(reminderGroup(at(19, 10, 9, 0), false, now), "Programados");
+  assert.equal(reminderGroup(at(17, 10, 9, 0), true, now), "Concluídos");
+
+  assert.equal(quickDue("today", now).getTime(), at(18, 10, 18, 0).getTime());
+  assert.equal(quickDue("tomorrow", now).getTime(), at(19, 10, 9, 0).getTime());
+  assert.equal(quickDue("monday", now).getTime(), at(23, 10, 9, 0).getTime());
+  // numa segunda, "próxima segunda" é a da semana seguinte
+  assert.equal(quickDue("monday", at(23, 10, 8, 0)).getTime(), at(30, 10, 9, 0).getTime());
+
+  const iso = toLocalIso(at(18, 10, 18, 0));
+  assert.match(iso, /^2026-11-18T18:00:00[+-]\d\d:\d\d$/);
+  assert.equal(new Date(iso).getTime(), at(18, 10, 18, 0).getTime());
 });

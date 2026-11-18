@@ -1,7 +1,8 @@
 //! Banco SQLite do brainote (docs/ESPECIFICACAO.md, seção 8).
 
+use chrono::{DateTime, Days, Local, Months, SecondsFormat};
 use rusqlite::{params, Connection, OptionalExtension, Result, Row};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// Cada item roda uma única vez, em ordem; `PRAGMA user_version` guarda quantos já rodaram.
@@ -40,6 +41,18 @@ CREATE TABLE settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+"#, r#"
+CREATE TABLE reminders (
+  id            TEXT PRIMARY KEY,
+  note_id       TEXT REFERENCES notes(id) ON DELETE SET NULL,
+  title         TEXT NOT NULL,
+  due_at        TEXT NOT NULL,
+  repeat        TEXT NOT NULL DEFAULT 'none',
+  done          INTEGER NOT NULL DEFAULT 0,
+  done_at       TEXT,
+  snoozed_until TEXT,
+  notified_at   TEXT
+);
 "#];
 
 #[derive(Serialize)]
@@ -61,8 +74,38 @@ pub struct Note {
     pub has_checklist: bool,
 }
 
+#[derive(Serialize)]
+pub struct Reminder {
+    pub id: String,
+    pub note_id: Option<String>,
+    pub title: String,
+    pub due_at: String,
+    /// none, daily, weekly ou monthly
+    pub repeat: String,
+    pub done: bool,
+    pub snoozed_until: Option<String>,
+}
+
+/// O que a tela manda ao criar ou editar um lembrete (validado em lib.rs).
+#[derive(Deserialize)]
+pub struct ReminderInput {
+    pub note_id: Option<String>,
+    pub title: String,
+    pub due_at: String,
+    pub repeat: String,
+}
+
+/// Lembrete vencido, pronto para virar notificação.
+pub struct Due {
+    pub id: String,
+    pub title: String,
+    /// quando vence de fato: `snoozed_until` se foi adiado, senão `due_at`
+    pub when: String,
+    pub note_title: Option<String>,
+}
+
 fn now() -> String {
-    chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
+    Local::now().to_rfc3339_opts(SecondsFormat::Secs, false)
 }
 
 fn new_id() -> String {
@@ -133,6 +176,111 @@ pub fn set_setting(c: &Connection, key: &str, value: &str) -> Result<()> {
         params![key, value],
     )?;
     Ok(())
+}
+
+// ---------- Lembretes ----------
+
+const REMINDER_COLS: &str = "id, note_id, title, due_at, repeat, done, snoozed_until";
+
+fn reminder(r: &Row) -> Result<Reminder> {
+    Ok(Reminder {
+        id: r.get(0)?,
+        note_id: r.get(1)?,
+        title: r.get(2)?,
+        due_at: r.get(3)?,
+        repeat: r.get(4)?,
+        done: r.get(5)?,
+        snoozed_until: r.get(6)?,
+    })
+}
+
+pub fn list_reminders(c: &Connection) -> Result<Vec<Reminder>> {
+    c.prepare(&format!("SELECT {REMINDER_COLS} FROM reminders ORDER BY julianday(COALESCE(snoozed_until, due_at))"))?
+        .query_map([], reminder)?
+        .collect()
+}
+
+pub fn create_reminder(c: &Connection, r: &ReminderInput) -> Result<Reminder> {
+    let id = new_id();
+    c.execute(
+        "INSERT INTO reminders (id, note_id, title, due_at, repeat) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![id, r.note_id, r.title, r.due_at, r.repeat],
+    )?;
+    c.query_row(&format!("SELECT {REMINDER_COLS} FROM reminders WHERE id = ?1"), [&id], reminder)
+}
+
+/// Mudou o horário: pode notificar de novo e esquece o "adiar".
+pub fn update_reminder(c: &Connection, id: &str, r: &ReminderInput) -> Result<()> {
+    c.execute(
+        "UPDATE reminders SET note_id = ?2, title = ?3, due_at = ?4, repeat = ?5, snoozed_until = NULL, notified_at = NULL
+         WHERE id = ?1",
+        params![id, r.note_id, r.title, r.due_at, r.repeat],
+    )?;
+    Ok(())
+}
+
+pub fn delete_reminder(c: &Connection, id: &str) -> Result<()> {
+    c.execute("DELETE FROM reminders WHERE id = ?1", [id])?;
+    Ok(())
+}
+
+/// Concluir um lembrete repetido cria a próxima ocorrência.
+pub fn set_reminder_done(c: &Connection, id: &str, done: bool) -> Result<()> {
+    let tx = c.unchecked_transaction()?;
+    if done {
+        let open: Option<(String, Option<String>, String, String)> = tx
+            .query_row("SELECT title, note_id, due_at, repeat FROM reminders WHERE id = ?1 AND done = 0", [id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })
+            .optional()?;
+        let Some((title, note_id, due_at, repeat)) = open else { return Ok(()) }; // já estava concluído
+        if let Some(next) = next_due(&due_at, &repeat, Local::now()) {
+            create_reminder(&tx, &ReminderInput { note_id, title, due_at: next, repeat })?;
+        }
+        tx.execute("UPDATE reminders SET done = 1, done_at = ?2 WHERE id = ?1", params![id, now()])?;
+    } else {
+        tx.execute("UPDATE reminders SET done = 0, done_at = NULL WHERE id = ?1", [id])?;
+    }
+    tx.commit()
+}
+
+pub fn snooze_reminder(c: &Connection, id: &str, minutes: i64) -> Result<()> {
+    let until = (Local::now() + chrono::Duration::minutes(minutes)).to_rfc3339_opts(SecondsFormat::Secs, false);
+    c.execute("UPDATE reminders SET snoozed_until = ?2, notified_at = NULL WHERE id = ?1", params![id, until])?;
+    Ok(())
+}
+
+/// Pendentes cujo horário (ou o do "adiar") já passou e que ainda não viraram notificação.
+pub fn due_reminders(c: &Connection) -> Result<Vec<Due>> {
+    c.prepare(
+        "SELECT r.id, r.title, COALESCE(r.snoozed_until, r.due_at), n.title
+         FROM reminders r LEFT JOIN notes n ON n.id = r.note_id AND n.deleted_at IS NULL
+         WHERE r.done = 0 AND r.notified_at IS NULL
+           AND julianday(COALESCE(r.snoozed_until, r.due_at)) <= julianday('now')
+         ORDER BY julianday(COALESCE(r.snoozed_until, r.due_at))",
+    )?
+    .query_map([], |r| Ok(Due { id: r.get(0)?, title: r.get(1)?, when: r.get(2)?, note_title: r.get(3)? }))?
+    .collect()
+}
+
+pub fn mark_notified(c: &Connection, id: &str) -> Result<()> {
+    c.execute("UPDATE reminders SET notified_at = ?2 WHERE id = ?1", params![id, now()])?;
+    Ok(())
+}
+
+/// Próxima ocorrência depois de `now`. Conta sempre a partir da data original, para o
+/// mensal de dia 31 não "encolher" (31/01 → 28/02 → 31/03, e não 28/03).
+fn next_due(due_at: &str, repeat: &str, now: DateTime<Local>) -> Option<String> {
+    let due = DateTime::parse_from_rfc3339(due_at).ok()?;
+    (1..)
+        .map_while(|k: u32| match repeat {
+            "daily" => due.checked_add_days(Days::new(k.into())),
+            "weekly" => due.checked_add_days(Days::new(7 * u64::from(k))),
+            "monthly" => due.checked_add_months(Months::new(k)),
+            _ => None,
+        })
+        .find(|d| *d > now)
+        .map(|d| d.to_rfc3339_opts(SecondsFormat::Secs, false))
 }
 
 // ---------- Notas ----------
@@ -270,6 +418,51 @@ mod tests {
         delete_folder(&c, &pasta.id).unwrap();
         assert!(list_folders(&c).unwrap().is_empty());
         assert_eq!(get_note(&c, &n.id).unwrap().folder_id, None);
+    }
+
+    fn at(s: &str) -> DateTime<Local> {
+        DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Local)
+    }
+
+    #[test]
+    fn proxima_repeticao() {
+        let jan31 = "2027-01-31T09:00:00-03:00";
+        assert_eq!(next_due(jan31, "monthly", at("2027-02-01T00:00:00-03:00")).unwrap(), "2027-02-28T09:00:00-03:00");
+        // conta da data original: março volta a ser dia 31
+        assert_eq!(next_due(jan31, "monthly", at("2027-03-01T00:00:00-03:00")).unwrap(), "2027-03-31T09:00:00-03:00");
+        // atrasado há dias: pula direto para a próxima no futuro
+        assert_eq!(next_due(jan31, "daily", at("2027-02-05T10:00:00-03:00")).unwrap(), "2027-02-06T09:00:00-03:00");
+        assert_eq!(next_due(jan31, "weekly", at("2027-01-31T09:00:00-03:00")).unwrap(), "2027-02-07T09:00:00-03:00");
+        assert_eq!(next_due(jan31, "none", at("2027-01-01T00:00:00-03:00")), None);
+    }
+
+    #[test]
+    fn lembretes_vencidos_concluir_e_adiar() {
+        let c = db();
+        let hora = |min: i64| (Local::now() + chrono::Duration::minutes(min)).to_rfc3339_opts(SecondsFormat::Secs, false);
+        let novo = |titulo: &str, quando: String, repeat: &str| {
+            create_reminder(&c, &ReminderInput { note_id: None, title: titulo.into(), due_at: quando, repeat: repeat.into() }).unwrap()
+        };
+        let vencido = novo("vencido", hora(-5), "weekly");
+        novo("futuro", hora(60), "none");
+
+        let ids = |c: &Connection| due_reminders(c).unwrap().into_iter().map(|d| d.title).collect::<Vec<_>>();
+        assert_eq!(ids(&c), vec!["vencido"]);
+        mark_notified(&c, &vencido.id).unwrap();
+        assert!(ids(&c).is_empty()); // não notifica duas vezes
+
+        // adiar: volta a vencer só depois do prazo
+        snooze_reminder(&c, &vencido.id, 10).unwrap();
+        assert!(ids(&c).is_empty());
+        c.execute("UPDATE reminders SET snoozed_until = ?1 WHERE id = ?2", params![hora(-1), vencido.id]).unwrap();
+        assert_eq!(ids(&c), vec!["vencido"]);
+
+        // concluir o semanal cria a próxima ocorrência, uma vez só
+        set_reminder_done(&c, &vencido.id, true).unwrap();
+        set_reminder_done(&c, &vencido.id, true).unwrap();
+        let todos = list_reminders(&c).unwrap();
+        assert_eq!(todos.len(), 3);
+        assert_eq!(todos.iter().filter(|r| r.title == "vencido" && !r.done).count(), 1);
     }
 
     #[test]

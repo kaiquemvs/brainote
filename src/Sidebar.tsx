@@ -15,10 +15,12 @@ export const SHORTCUTS = [
 type Props = {
   folders: Folder[];
   notes: Note[];
+  pendingReminders: number;
   section: string;
   onSection: (id: string) => void;
   look: Appearance;
   onLook: (change: Partial<Appearance>) => void;
+  onSettings: () => void;
   openMenu: (m: MenuState) => void;
   onChanged: () => Promise<void>;
 };
@@ -82,7 +84,11 @@ export function Sidebar(p: Props) {
       <nav aria-label="Navegação" className="pane-scroll" style={{ padding: "0 10px 12px" }}>
         <div className="lbl" style={{ padding: "6px 10px" }}>Atalhos</div>
         {SHORTCUTS.map((s) =>
-          nav(s.id, s.label, s.icon, s.id === "all" ? p.notes.length : s.id === "checklists" ? p.notes.filter((n) => n.has_checklist).length : 0),
+          nav(s.id, s.label, s.icon,
+            s.id === "all" ? p.notes.length
+            : s.id === "checklists" ? p.notes.filter((n) => n.has_checklist).length
+            : s.id === "reminders" ? p.pendingReminders
+            : 0),
         )}
 
         <div className="lbl" style={{ padding: "18px 10px 6px" }}>Pastas</div>
@@ -114,7 +120,12 @@ export function Sidebar(p: Props) {
       </nav>
 
       <div style={{ flex: "none", padding: 12, borderTop: "1px solid var(--sep)", display: "flex", flexDirection: "column", gap: 10 }}>
-        <div className="lbl" style={{ padding: "0 2px" }}>Aparência</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 0 0 2px" }}>
+          <span className="lbl">Aparência</span>
+          <button className="btn-ic" aria-label="Configurações" style={{ width: 28, height: 28 }} onClick={p.onSettings}>
+            <Icon>{paths.gear}</Icon>
+          </button>
+        </div>
         <div className="seg" role="group" aria-label="Tema">
           <button className={`seg-b${p.look.theme === "light" ? " is-on" : ""}`} aria-pressed={p.look.theme === "light"} onClick={() => p.onLook({ theme: "light" })}>
             <Icon size={14}>{paths.sun}</Icon>
