@@ -180,7 +180,8 @@ Uma janela única, **sem a borda padrão do Windows** (`decorations: false`), co
   - **Checklist:**
     - Item com bolinha à esquerda. Marcado, a bolinha fica preenchida com `--accfill` e o texto vai para `--text2`.
     - Enter cria um novo item; Enter num item vazio sai do checklist.
-    - Opção (em Configurações) **"Mover itens marcados para o fim"**, ligada por padrão.
+    - Ao marcar, o item **fica no mesmo lugar** (não desce para o fim da lista).
+    - Ctrl+Enter marca ou desmarca o item onde está o cursor.
 - **Salvamento automático** cerca de 500 ms depois da última digitação. Não existe botão "Salvar".
 - O conteúdo é salvo como **JSON do TipTap**, mais uma cópia em texto puro para busca e prévia.
 
@@ -285,7 +286,6 @@ Também ocupa as colunas da lista e do editor.
 - **Iniciar com o Windows** (plugin autostart): ligado por padrão, com opção em Configurações. Ao iniciar assim, o app abre **minimizado na bandeja**, com os widgets na tela.
 - **Configurações** (janela modal):
   - Iniciar com o Windows.
-  - Mover itens marcados para o fim.
   - Exportar backup / Importar backup (seção 8).
   - Versão do app.
 
@@ -304,7 +304,7 @@ Também ocupa as colunas da lista e do editor.
 | `reminders` | `id`, `note_id` (opcional), `title`, `due_at`, `repeat` (`none`/`daily`/`weekly`/`monthly`), `done`, `done_at`, `snoozed_until`, `notified_at` |
 | `events` | `id`, `title`, `starts_at`, `ends_at` (opcional), `all_day`, `note_id` (opcional) |
 | `widgets` | `id`, `kind` (`postit`/`checklist`/`agenda`), `note_id`, `color`, `x`, `y`, `width`, `height`, `on_top` |
-| `settings` | `key`, `value` (tema, vidro, iniciar com Windows, mover concluídos, estado da janela) |
+| `settings` | `key`, `value` (tema, vidro, iniciar com Windows, estado da janela) |
 
 - **Backup:** exporta tudo para um único `.json` (escolha do local pelo diálogo de salvar). A importação faz uma cópia do banco atual antes de substituir.
 - **Primeira abertura:** cria as pastas **Pessoal** e **Trabalho**, e uma nota de boas-vindas curta explicando checklists, lembretes e post-its.
@@ -330,7 +330,7 @@ Uma fase por vez. Em cada uma: plano curto → construir → rodar → me passar
 - **Pronto quando:** consigo criar, editar, mover, fixar, buscar e apagar notas, e tudo continua lá depois de fechar e abrir o app.
 
 ### Fase 2 — Editor e checklist
-- TipTap com o menu **Aa**, checklists e a regra de mover itens marcados para o fim.
+- TipTap com o menu **Aa** e checklists (itens marcados ficam no lugar).
 - Botão de checklist na barra.
 - Contador da seção **Checklists**.
 - **Pronto quando:** formato texto, crio e marco checklists com o teclado e o mouse, e a prévia na lista fica correta.
