@@ -1,11 +1,14 @@
 mod background;
+#[cfg(windows)]
+mod desktop;
 mod store;
+mod widgets;
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::window::{Effect, EffectsBuilder};
-use tauri::{AppHandle, Manager, State, Theme, WebviewWindow, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, State, Theme, WebviewWindow, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_window_state::StateFlags;
 
@@ -22,6 +25,13 @@ fn with<T>(db: &State<Db>, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -
     f(&conn).map_err(|e| e.to_string())
 }
 
+/// Como `with`, para o que altera dados: depois avisa todas as janelas (app e widgets).
+fn write<T>(app: &AppHandle, db: &State<Db>, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Res<T> {
+    let out = with(db, f)?;
+    background::changed(app);
+    Ok(out)
+}
+
 fn folder_name(name: &str) -> Res<&str> {
     let name = name.trim();
     if name.is_empty() {
@@ -31,7 +41,7 @@ fn folder_name(name: &str) -> Res<&str> {
 }
 
 /// Tema ("light" ou "dark") e efeito vidro, guardados na tabela `settings`.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct Appearance {
     theme: String,
     glass: bool,
@@ -57,8 +67,9 @@ fn get_appearance(db: State<Db>) -> Res<Appearance> {
     with(&db, read_appearance)
 }
 
+/// Vale para a janela principal e para todos os widgets.
 #[tauri::command]
-fn set_appearance(window: WebviewWindow, db: State<Db>, appearance: Appearance) -> Res<()> {
+fn set_appearance(app: AppHandle, db: State<Db>, appearance: Appearance) -> Res<()> {
     if appearance.theme != "light" && appearance.theme != "dark" {
         return Err("Tema inválido.".into());
     }
@@ -66,7 +77,11 @@ fn set_appearance(window: WebviewWindow, db: State<Db>, appearance: Appearance) 
         store::set_setting(c, "theme", &appearance.theme)?;
         store::set_setting(c, "glass", if appearance.glass { "1" } else { "0" })
     })?;
-    apply_appearance(&window, &appearance).map_err(|e| e.to_string())
+    for w in app.webview_windows().values() {
+        apply_appearance(w, &appearance).map_err(|e| e.to_string())?;
+    }
+    let _ = app.emit("appearance-changed", appearance);
+    Ok(())
 }
 
 #[tauri::command]
@@ -75,20 +90,20 @@ fn list_folders(db: State<Db>) -> Res<Vec<store::Folder>> {
 }
 
 #[tauri::command]
-fn create_folder(db: State<Db>, name: &str) -> Res<store::Folder> {
+fn create_folder(app: AppHandle, db: State<Db>, name: &str) -> Res<store::Folder> {
     let name = folder_name(name)?;
-    with(&db, |c| store::create_folder(c, name))
+    write(&app, &db, |c| store::create_folder(c, name))
 }
 
 #[tauri::command]
-fn rename_folder(db: State<Db>, id: &str, name: &str) -> Res<()> {
+fn rename_folder(app: AppHandle, db: State<Db>, id: &str, name: &str) -> Res<()> {
     let name = folder_name(name)?;
-    with(&db, |c| store::rename_folder(c, id, name))
+    write(&app, &db, |c| store::rename_folder(c, id, name))
 }
 
 #[tauri::command]
-fn delete_folder(db: State<Db>, id: &str) -> Res<()> {
-    with(&db, |c| store::delete_folder(c, id))
+fn delete_folder(app: AppHandle, db: State<Db>, id: &str) -> Res<()> {
+    write(&app, &db, |c| store::delete_folder(c, id))
 }
 
 #[tauri::command]
@@ -102,35 +117,35 @@ fn search_notes(db: State<Db>, query: &str) -> Res<Vec<String>> {
 }
 
 #[tauri::command]
-fn create_note(db: State<Db>, folder_id: Option<&str>) -> Res<store::Note> {
-    with(&db, |c| store::create_note(c, folder_id))
+fn create_note(app: AppHandle, db: State<Db>, folder_id: Option<&str>) -> Res<store::Note> {
+    write(&app, &db, |c| store::create_note(c, folder_id))
 }
 
 #[tauri::command]
-fn update_note(db: State<Db>, id: &str, title: &str, content_json: &str, plain_text: &str) -> Res<()> {
+fn update_note(app: AppHandle, db: State<Db>, id: &str, title: &str, content_json: &str, plain_text: &str) -> Res<()> {
     // JSON quebrado deixaria a nota impossível de abrir: recusa antes de gravar
     serde_json::from_str::<serde_json::Value>(content_json).map_err(|e| format!("Conteúdo inválido: {e}"))?;
-    with(&db, |c| store::update_note(c, id, title, content_json, plain_text))
+    write(&app, &db, |c| store::update_note(c, id, title, content_json, plain_text))
 }
 
 #[tauri::command]
-fn set_pinned(db: State<Db>, id: &str, pinned: bool) -> Res<()> {
-    with(&db, |c| store::set_pinned(c, id, pinned))
+fn set_pinned(app: AppHandle, db: State<Db>, id: &str, pinned: bool) -> Res<()> {
+    write(&app, &db, |c| store::set_pinned(c, id, pinned))
 }
 
 #[tauri::command]
-fn move_note(db: State<Db>, id: &str, folder_id: Option<&str>) -> Res<()> {
-    with(&db, |c| store::move_note(c, id, folder_id))
+fn move_note(app: AppHandle, db: State<Db>, id: &str, folder_id: Option<&str>) -> Res<()> {
+    write(&app, &db, |c| store::move_note(c, id, folder_id))
 }
 
 #[tauri::command]
-fn delete_note(db: State<Db>, id: &str) -> Res<()> {
-    with(&db, |c| store::delete_note(c, id))
+fn delete_note(app: AppHandle, db: State<Db>, id: &str) -> Res<()> {
+    write(&app, &db, |c| store::delete_note(c, id))
 }
 
 #[tauri::command]
-fn restore_note(db: State<Db>, id: &str) -> Res<()> {
-    with(&db, |c| store::restore_note(c, id))
+fn restore_note(app: AppHandle, db: State<Db>, id: &str) -> Res<()> {
+    write(&app, &db, |c| store::restore_note(c, id))
 }
 
 // ---------- Lembretes ----------
@@ -152,25 +167,68 @@ fn list_reminders(db: State<Db>) -> Res<Vec<store::Reminder>> {
 }
 
 #[tauri::command]
-fn create_reminder(db: State<Db>, reminder: store::ReminderInput) -> Res<store::Reminder> {
+fn create_reminder(app: AppHandle, db: State<Db>, reminder: store::ReminderInput) -> Res<store::Reminder> {
     check_reminder(&reminder)?;
-    with(&db, |c| store::create_reminder(c, &reminder))
+    write(&app, &db, |c| store::create_reminder(c, &reminder))
 }
 
 #[tauri::command]
-fn update_reminder(db: State<Db>, id: &str, reminder: store::ReminderInput) -> Res<()> {
+fn update_reminder(app: AppHandle, db: State<Db>, id: &str, reminder: store::ReminderInput) -> Res<()> {
     check_reminder(&reminder)?;
-    with(&db, |c| store::update_reminder(c, id, &reminder))
+    write(&app, &db, |c| store::update_reminder(c, id, &reminder))
 }
 
 #[tauri::command]
-fn delete_reminder(db: State<Db>, id: &str) -> Res<()> {
-    with(&db, |c| store::delete_reminder(c, id))
+fn delete_reminder(app: AppHandle, db: State<Db>, id: &str) -> Res<()> {
+    write(&app, &db, |c| store::delete_reminder(c, id))
 }
 
 #[tauri::command]
-fn set_reminder_done(db: State<Db>, id: &str, done: bool) -> Res<()> {
-    with(&db, |c| store::set_reminder_done(c, id, done))
+fn set_reminder_done(app: AppHandle, db: State<Db>, id: &str, done: bool) -> Res<()> {
+    write(&app, &db, |c| store::set_reminder_done(c, id, done))
+}
+
+// ---------- Widgets ----------
+
+#[tauri::command]
+fn list_widgets(db: State<Db>) -> Res<Vec<store::Widget>> {
+    with(&db, store::list_widgets)
+}
+
+#[tauri::command]
+fn get_widget(db: State<Db>, id: &str) -> Res<store::Widget> {
+    with(&db, |c| store::get_widget(c, id))
+}
+
+// async: no Windows, criar ou fechar janela num comando síncrono trava o app
+#[tauri::command]
+async fn create_widget(app: AppHandle, kind: String, note_id: Option<String>) -> Res<store::Widget> {
+    widgets::create(&app, &kind, note_id.as_deref())
+}
+
+#[tauri::command]
+async fn delete_widget(app: AppHandle, id: String) -> Res<()> {
+    widgets::remove(&app, &id);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_widget_color(app: AppHandle, db: State<Db>, id: &str, color: &str) -> Res<()> {
+    if !widgets::COLORS.contains(&color) {
+        return Err("Cor inválida.".into());
+    }
+    write(&app, &db, |c| store::set_widget_color(c, id, color))
+}
+
+#[tauri::command]
+async fn widget_menu(app: AppHandle, window: WebviewWindow) -> Res<()> {
+    widgets::popup_menu(&app, &window).map_err(|e| e.to_string())
+}
+
+/// Duplo clique no post-it: abre a nota no app.
+#[tauri::command]
+fn open_note(app: AppHandle, id: &str) {
+    widgets::open_in_app(&app, Some(id));
 }
 
 // ---------- Iniciar com o Windows ----------
@@ -203,8 +261,14 @@ pub fn run() {
         // abrir o brainote de novo só traz a janela existente para frente (precisa ser o primeiro plugin)
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| background::show_main(app)))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec![AUTOSTART_ARG])))
-        // guarda posição e tamanho da janela; quem decide se ela aparece é o setup (bandeja)
-        .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(StateFlags::all() - StateFlags::VISIBLE).build())
+        // guarda posição e tamanho da janela principal; quem decide se ela aparece é o setup (bandeja).
+        // Os widgets guardam o lugar deles no banco.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(StateFlags::all() - StateFlags::VISIBLE)
+                .with_filter(|label| label == "main")
+                .build(),
+        )
         .setup(|app| {
             // %APPDATA%\brainote\brainote.db
             let dir = app.path().data_dir()?.join("brainote");
@@ -223,21 +287,34 @@ pub fn run() {
             app.manage(Db(Mutex::new(conn)));
 
             background::tray(app.handle())?;
-            // aberto pelo Windows ao ligar: fica só na bandeja
+            widgets::restore(app.handle());
+            #[cfg(windows)]
+            desktop::watch(app.handle().clone()); // Win+D não esconde os widgets
+            // aberto pelo Windows ao ligar: fica só na bandeja (com os widgets na tela)
             if !std::env::args().any(|a| a == AUTOSTART_ARG) {
                 background::show_main(app.handle());
             }
             background::start_scheduler(app.handle().clone());
             Ok(())
         })
-        // fechar a janela esconde na bandeja; o app só fecha pelo "Sair" da bandeja
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+        .on_window_event(|window, event| match widgets::id_of(window.label()) {
+            Some(id) => widgets::on_window_event(window, id, event),
+            // janela principal: fechar esconde na bandeja; o app só fecha pelo "Sair"
+            None => {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
+            list_widgets,
+            get_widget,
+            create_widget,
+            delete_widget,
+            set_widget_color,
+            widget_menu,
+            open_note,
             list_reminders,
             create_reminder,
             update_reminder,

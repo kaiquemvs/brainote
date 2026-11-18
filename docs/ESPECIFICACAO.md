@@ -255,7 +255,7 @@ Também ocupa as colunas da lista e do editor.
 - **Menu "Adicionar widget"** (popover no estilo do protótipo): uma linha por tipo, com ícone, nome, descrição curta e botão **Adicionar** (ou **Remover**, se já existir um daquele tipo; post-its podem ser vários).
 - **Sincronização:** quando qualquer dado muda, o backend emite o evento Tauri `data-changed` e todas as janelas recarregam o que mostram. Marcar um item no widget marca na nota, e o contrário também.
 - **Tema e vidro:** os widgets seguem o tema e o efeito vidro do app.
-- **Limitação conhecida a testar:** o atalho Win+D (mostrar área de trabalho) pode esconder janelas "sempre no fundo". Teste na Fase 5 e me conte o resultado antes de buscar alternativas.
+- **Win+D (mostrar área de trabalho):** testado na Fase 5. O Windows não minimiza os widgets: ele põe a área de trabalho na frente deles. O app percebe isso e traz os widgets para a frente da área de trabalho; quando outra janela fica ativa, eles voltam para o fundo. Um clique comum na área de trabalho não dispara nada.
 
 ---
 

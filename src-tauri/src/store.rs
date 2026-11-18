@@ -53,6 +53,20 @@ CREATE TABLE reminders (
   snoozed_until TEXT,
   notified_at   TEXT
 );
+"#, r#"
+-- Posição e tamanho em pixels lógicos; x/y nulos = o Windows escolhe onde abrir.
+-- Nota apagada de vez (lixeira de 30 dias) leva junto os widgets dela.
+CREATE TABLE widgets (
+  id      TEXT PRIMARY KEY,
+  kind    TEXT NOT NULL,
+  note_id TEXT REFERENCES notes(id) ON DELETE CASCADE,
+  color   TEXT NOT NULL DEFAULT 'amarelo',
+  x       REAL,
+  y       REAL,
+  width   REAL NOT NULL,
+  height  REAL NOT NULL,
+  on_top  INTEGER NOT NULL DEFAULT 0
+);
 "#];
 
 #[derive(Serialize)]
@@ -93,6 +107,20 @@ pub struct ReminderInput {
     pub title: String,
     pub due_at: String,
     pub repeat: String,
+}
+
+/// Widget na área de trabalho: postit, checklist ou agenda.
+#[derive(Serialize, Clone)]
+pub struct Widget {
+    pub id: String,
+    pub kind: String,
+    pub note_id: Option<String>,
+    pub color: String,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub width: f64,
+    pub height: f64,
+    pub on_top: bool,
 }
 
 /// Lembrete vencido, pronto para virar notificação.
@@ -283,6 +311,66 @@ fn next_due(due_at: &str, repeat: &str, now: DateTime<Local>) -> Option<String> 
         .map(|d| d.to_rfc3339_opts(SecondsFormat::Secs, false))
 }
 
+// ---------- Widgets ----------
+
+const WIDGET_COLS: &str = "id, kind, note_id, color, x, y, width, height, on_top";
+
+fn widget(r: &Row) -> Result<Widget> {
+    Ok(Widget {
+        id: r.get(0)?,
+        kind: r.get(1)?,
+        note_id: r.get(2)?,
+        color: r.get(3)?,
+        x: r.get(4)?,
+        y: r.get(5)?,
+        width: r.get(6)?,
+        height: r.get(7)?,
+        on_top: r.get(8)?,
+    })
+}
+
+pub fn list_widgets(c: &Connection) -> Result<Vec<Widget>> {
+    c.prepare(&format!("SELECT {WIDGET_COLS} FROM widgets ORDER BY rowid"))?.query_map([], widget)?.collect()
+}
+
+pub fn get_widget(c: &Connection, id: &str) -> Result<Widget> {
+    c.query_row(&format!("SELECT {WIDGET_COLS} FROM widgets WHERE id = ?1"), [id], widget)
+}
+
+pub fn create_widget(c: &Connection, kind: &str, note_id: Option<&str>, width: f64, height: f64) -> Result<Widget> {
+    let id = new_id();
+    c.execute(
+        "INSERT INTO widgets (id, kind, note_id, width, height) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![id, kind, note_id, width, height],
+    )?;
+    get_widget(c, &id)
+}
+
+pub fn delete_widget(c: &Connection, id: &str) -> Result<()> {
+    c.execute("DELETE FROM widgets WHERE id = ?1", [id])?;
+    Ok(())
+}
+
+pub fn set_widget_color(c: &Connection, id: &str, color: &str) -> Result<()> {
+    c.execute("UPDATE widgets SET color = ?2 WHERE id = ?1", params![id, color])?;
+    Ok(())
+}
+
+pub fn set_widget_on_top(c: &Connection, id: &str, on_top: bool) -> Result<()> {
+    c.execute("UPDATE widgets SET on_top = ?2 WHERE id = ?1", params![id, on_top])?;
+    Ok(())
+}
+
+pub fn set_widget_position(c: &Connection, id: &str, x: f64, y: f64) -> Result<()> {
+    c.execute("UPDATE widgets SET x = ?2, y = ?3 WHERE id = ?1", params![id, x, y])?;
+    Ok(())
+}
+
+pub fn set_widget_size(c: &Connection, id: &str, width: f64, height: f64) -> Result<()> {
+    c.execute("UPDATE widgets SET width = ?2, height = ?3 WHERE id = ?1", params![id, width, height])?;
+    Ok(())
+}
+
 // ---------- Notas ----------
 
 // has_checklist: o JSON do TipTap (JSON.stringify, sem espaços) tem pelo menos um item de checklist.
@@ -300,6 +388,10 @@ fn note(r: &Row) -> Result<Note> {
         updated_at: r.get(6)?,
         has_checklist: r.get(7)?,
     })
+}
+
+pub fn note_title(c: &Connection, id: &str) -> Result<String> {
+    c.query_row("SELECT title FROM notes WHERE id = ?1", [id], |r| r.get(0))
 }
 
 fn get_note(c: &Connection, id: &str) -> Result<Note> {
@@ -463,6 +555,23 @@ mod tests {
         let todos = list_reminders(&c).unwrap();
         assert_eq!(todos.len(), 3);
         assert_eq!(todos.iter().filter(|r| r.title == "vencido" && !r.done).count(), 1);
+    }
+
+    #[test]
+    fn widgets() {
+        let c = db();
+        let n = create_note(&c, None).unwrap();
+        let w = create_widget(&c, "postit", Some(&n.id), 260.0, 220.0).unwrap();
+        assert_eq!((w.x, w.color.as_str(), w.on_top), (None, "amarelo", false));
+        set_widget_position(&c, &w.id, 100.0, 50.5).unwrap();
+        set_widget_size(&c, &w.id, 300.0, 240.0).unwrap();
+        set_widget_on_top(&c, &w.id, true).unwrap();
+        let w = get_widget(&c, &w.id).unwrap();
+        assert_eq!((w.x, w.y, w.width, w.height, w.on_top), (Some(100.0), Some(50.5), 300.0, 240.0, true));
+
+        // nota apagada de vez leva o post-it junto
+        c.execute("DELETE FROM notes WHERE id = ?1", [&n.id]).unwrap();
+        assert!(list_widgets(&c).unwrap().is_empty());
     }
 
     #[test]

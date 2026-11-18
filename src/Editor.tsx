@@ -1,13 +1,14 @@
 // Editor da nota (docs/ESPECIFICACAO.md, 4.4), com TipTap.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { EditorContent, useEditor, useEditorState, type Editor as TipTap } from "@tiptap/react";
-import type { ChainedCommands, JSONContent } from "@tiptap/core";
+import type { ChainedCommands } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskList } from "@tiptap/extension-list";
 import { api, type Note, type Reminder } from "./api";
 import { ChecklistItem } from "./checklist";
 import { editorDate, reminderWhen } from "./dates";
 import { Icon, paths } from "./icons";
+import { noteDoc as initialContent } from "./noteContent";
 import { WindowButtons } from "./WindowButtons";
 
 const extensions = [
@@ -17,13 +18,6 @@ const extensions = [
   ChecklistItem,
 ];
 
-/** Notas da Fase 1 só têm texto simples: cada linha vira um parágrafo. */
-function initialContent(note: Note): JSONContent {
-  if (note.content_json) return JSON.parse(note.content_json);
-  const lines = note.plain_text ? note.plain_text.split("\n") : [""];
-  return { type: "doc", content: lines.map((t) => ({ type: "paragraph", content: t ? [{ type: "text", text: t }] : [] })) };
-}
-
 type Props = {
   note: Note;
   autoFocus: boolean;
@@ -32,10 +26,13 @@ type Props = {
   reminder: Reminder | null;
   onReminder: () => void;
   onRemoveReminder: (r: Reminder) => void;
+  /** a nota já tem post-it na área de trabalho */
+  postitOn: boolean;
+  onPostit: () => void;
 };
 
 /** Montado com `key={note.id}`: cada nota tem o seu próprio editor. */
-export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemoveReminder }: Props) {
+export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemoveReminder, postitOn, onPostit }: Props) {
   const [title, setTitle] = useState(note.title);
   const [aaOpen, setAaOpen] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -81,6 +78,14 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
     if (autoFocus) titleRef.current?.focus();
   }, [autoFocus]);
 
+  // A nota mudou fora do editor (item marcado num widget): mostra a versão nova. Se houver
+  // digitação ainda não salva, ela tem prioridade e o salvamento dela vence.
+  useEffect(() => {
+    if (!editor || !note.content_json || dirty.current || note.content_json === latest.current.json) return;
+    editor.commands.setContent(JSON.parse(note.content_json), { emitUpdate: false });
+    latest.current = { ...latest.current, json: note.content_json };
+  }, [note.content_json]);
+
   // Salva o que faltar ao trocar de nota (desmontar) ou quando a janela perde o foco
   // (fechar só esconde na bandeja; clicar no "Sair" da bandeja já tira o foco antes).
   useEffect(() => {
@@ -115,6 +120,9 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
         </button>
         <button className={`btn-ic${reminder ? " is-on" : ""}`} aria-label="Lembrete desta nota" aria-pressed={!!reminder} onClick={onReminder}>
           <Icon size={18}>{paths.bell}</Icon>
+        </button>
+        <button className={`btn-ic${postitOn ? " is-on" : ""}`} aria-label="Fixar como post-it na área de trabalho" aria-pressed={postitOn} onClick={onPostit}>
+          <Icon size={18}>{paths.postit}</Icon>
         </button>
         <span className="grow" data-tauri-drag-region />
         <WindowButtons />

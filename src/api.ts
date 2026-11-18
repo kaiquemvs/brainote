@@ -19,6 +19,18 @@ export type Repeat = "none" | "daily" | "weekly" | "monthly";
 export type ReminderInput = { note_id: string | null; title: string; due_at: string; repeat: Repeat };
 export type Reminder = ReminderInput & { id: string; done: boolean; snoozed_until: string | null };
 export type Autostart = { enabled: boolean; available: boolean };
+export type WidgetKind = "postit" | "checklist" | "agenda";
+export type Widget = {
+  id: string;
+  kind: WidgetKind;
+  note_id: string | null;
+  color: string;
+  x: number | null;
+  y: number | null;
+  width: number;
+  height: number;
+  on_top: boolean;
+};
 
 function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   return invoke<T>(cmd, args).catch((e) => {
@@ -29,6 +41,14 @@ function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 }
 
 export const api = {
+  listWidgets: () => call<Widget[]>("list_widgets"),
+  // sem aviso de erro: o widget pode ter acabado de ser removido enquanto a janela fecha
+  getWidget: (id: string) => invoke<Widget>("get_widget", { id }).catch(() => null),
+  createWidget: (kind: WidgetKind, noteId: string | null) => call<Widget>("create_widget", { kind, noteId }),
+  deleteWidget: (id: string) => call<void>("delete_widget", { id }),
+  setWidgetColor: (id: string, color: string) => call<void>("set_widget_color", { id, color }),
+  widgetMenu: () => call<void>("widget_menu"),
+  openNote: (id: string) => call<void>("open_note", { id }),
   listReminders: () => call<Reminder[]>("list_reminders"),
   createReminder: (reminder: ReminderInput) => call<Reminder>("create_reminder", { reminder }),
   updateReminder: (id: string, reminder: ReminderInput) => call<void>("update_reminder", { id, reminder }),

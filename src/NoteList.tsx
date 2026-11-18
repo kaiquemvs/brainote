@@ -19,6 +19,9 @@ type Props = {
   onDelete: (id: string) => void;
   onPin: (n: Note) => void;
   onMove: (id: string, folderId: string | null) => void;
+  /** a nota tem post-it na área de trabalho? (muda o texto do menu) */
+  hasPostit: (id: string) => boolean;
+  onPostit: (n: Note) => void;
   sideOpen: boolean;
   onToggleSide: () => void;
   openMenu: (m: MenuState) => void;
@@ -41,6 +44,7 @@ export function NoteList(p: Props) {
       items: [
         { label: n.pinned ? "Desafixar" : "Fixar", onSelect: () => p.onPin(n) },
         { label: "Mover para pasta…", onSelect: () => p.openMenu({ ...at, items: moveItems }) },
+        { label: p.hasPostit(n.id) ? "Remover da área de trabalho" : "Fixar na área de trabalho", onSelect: () => p.onPostit(n) },
         { label: "Apagar", onSelect: () => p.onDelete(n.id) },
       ],
     });

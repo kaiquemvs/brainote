@@ -1,13 +1,13 @@
 //! O que funciona com a janela fechada: bandeja, agendador de lembretes e notificações
 //! do Windows (docs/ESPECIFICACAO.md, seções 6 e 7).
 
-use crate::{store, Db};
+use crate::{store, widgets, Db};
 use chrono::{DateTime, Local};
 use rusqlite::Connection;
 use std::time::Duration;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 use tauri_winrt_notification::{Scenario, Toast};
 
 /// Mostra e foca a janela principal (bandeja, notificação, segunda instância).
@@ -20,27 +20,62 @@ pub fn show_main(app: &AppHandle) {
 }
 
 /// Banco a partir de qualquer thread; erro vira log, porque aqui não há tela para mostrar.
-fn with_db<T>(app: &AppHandle, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Option<T> {
+pub fn with_db<T>(app: &AppHandle, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Option<T> {
     let db = app.state::<Db>();
     let conn = db.0.lock().unwrap_or_else(|e| e.into_inner());
     f(&conn).map_err(|e| eprintln!("banco: {e}")).ok()
 }
 
-pub fn tray(app: &AppHandle) -> tauri::Result<()> {
-    let menu = Menu::with_items(
+/// Algo mudou nos dados: todas as janelas (app e widgets) recarregam, e o menu da bandeja
+/// é refeito, porque lista os widgets pelo nome da nota.
+pub fn changed(app: &AppHandle) {
+    let _ = app.emit("data-changed", ());
+    if let (Some(tray), Ok(menu)) = (app.tray_by_id("main"), tray_menu(app)) {
+        let _ = tray.set_menu(Some(menu));
+    }
+}
+
+/// Abrir brainote, Nova nota, Widgets ▸ (os da tela, com ✓; desmarcar remove), Sair.
+fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
+    let widgets = with_db(app, store::list_widgets).unwrap_or_default();
+    let sub = Submenu::with_id(app, "widgets", "Widgets", true)?;
+    for w in &widgets {
+        let note = || {
+            let t = w.note_id.as_deref().and_then(|id| with_db(app, |c| store::note_title(c, id))).unwrap_or_default();
+            let t = t.trim();
+            if t.is_empty() { "Nova nota".to_string() } else { t.chars().take(40).collect() }
+        };
+        let label = match w.kind.as_str() {
+            "postit" => format!("Post-it: {}", note()),
+            "checklist" => format!("Checklist: {}", note()),
+            _ => "Agenda de hoje".to_string(),
+        };
+        sub.append(&CheckMenuItem::with_id(app, format!("tw:{}", w.id), label, true, true, None::<&str>)?)?;
+    }
+    if !widgets.iter().any(|w| w.kind == "agenda") {
+        sub.append(&CheckMenuItem::with_id(app, "tw-agenda", "Agenda de hoje", true, false, None::<&str>)?)?;
+    }
+    sub.append(&PredefinedMenuItem::separator(app)?)?;
+    sub.append(&MenuItem::with_id(app, "tw-add", "Adicionar widget…", true, None::<&str>)?)?;
+    Menu::with_items(
         app,
         &[
             &MenuItem::with_id(app, "open", "Abrir brainote", true, None::<&str>)?,
             &MenuItem::with_id(app, "new-note", "Nova nota", true, None::<&str>)?,
+            &sub,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?,
         ],
-    )?;
+    )
+}
+
+pub fn tray(app: &AppHandle) -> tauri::Result<()> {
     TrayIconBuilder::with_id("main")
         .icon(app.default_window_icon().expect("ícone do app").clone())
         .tooltip("brainote")
-        .menu(&menu)
+        .menu(&tray_menu(app)?)
         .show_menu_on_left_click(false)
+        // recebe os cliques de todos os menus do app: bandeja e botão direito dos widgets
         .on_menu_event(|app, e| match e.id.as_ref() {
             "open" => show_main(app),
             "new-note" => {
@@ -48,7 +83,7 @@ pub fn tray(app: &AppHandle) -> tauri::Result<()> {
                 let _ = app.emit("new-note", ());
             }
             "quit" => app.exit(0),
-            _ => {}
+            id => _ = widgets::on_menu(app, id),
         })
         .on_tray_icon_event(|tray, e| {
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = e {
@@ -118,7 +153,7 @@ fn notify(app: &AppHandle, d: &store::Due) -> bool {
                     let _ = handle.emit("open-reminder", Some(&id));
                 }
             }
-            let _ = handle.emit("data-changed", ());
+            changed(&handle);
             Ok(())
         })
         .show()

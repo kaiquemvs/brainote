@@ -62,6 +62,8 @@ export function reminderWhen(d: Date, now: Date): string {
   return `${WEEK[d.getDay()]}, ${two(d.getDate())}/${two(d.getMonth() + 1)} · ${time(d)}`;
 }
 
+export const isToday = (d: Date, now: Date) => daysAgo(d, now) === 0;
+
 export const REMINDER_GROUPS = ["Atrasados", "Hoje", "Programados", "Concluídos"] as const;
 
 export function reminderGroup(when: Date, done: boolean, now: Date): (typeof REMINDER_GROUPS)[number] {

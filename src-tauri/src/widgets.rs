@@ -1,0 +1,167 @@
+//! Widgets na área de trabalho: cada um é uma janela própria (docs/ESPECIFICACAO.md, 5).
+
+use crate::background::{changed, show_main, with_db};
+use crate::{apply_appearance, read_appearance, store};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+
+const PREFIX: &str = "widget-";
+pub const COLORS: [&str; 4] = ["amarelo", "verde", "rosa", "azul"];
+
+/// Tamanho padrão de cada tipo; `None` = tipo desconhecido.
+pub fn default_size(kind: &str) -> Option<(f64, f64)> {
+    match kind {
+        "postit" => Some((260.0, 220.0)),
+        "checklist" => Some((300.0, 320.0)),
+        "agenda" => Some((300.0, 260.0)),
+        _ => None,
+    }
+}
+
+/// "widget-<id>" → "<id>".
+pub fn id_of(label: &str) -> Option<&str> {
+    label.strip_prefix(PREFIX)
+}
+
+fn window(app: &AppHandle, id: &str) -> Option<WebviewWindow> {
+    app.get_webview_window(&format!("{PREFIX}{id}"))
+}
+
+/// Abre a janela do widget no lugar salvo: sem borda, fora da barra de tarefas e no fundo da tela.
+pub fn open(app: &AppHandle, w: &store::Widget) -> tauri::Result<()> {
+    let url = WebviewUrl::App(format!("index.html#widget={}", w.id).into());
+    let mut builder = WebviewWindowBuilder::new(app, format!("{PREFIX}{}", w.id), url)
+        .title("brainote")
+        .decorations(false)
+        .transparent(true)
+        .shadow(true) // borda fina, cantos e sombra do próprio Windows 11
+        .skip_taskbar(true)
+        .maximizable(false)
+        .min_inner_size(180.0, 140.0)
+        .inner_size(w.width, w.height)
+        .always_on_top(w.on_top)
+        .always_on_bottom(!w.on_top)
+        .focused(false)
+        .visible(false);
+    if let (Some(x), Some(y)) = (w.x, w.y) {
+        builder = builder.position(x, y);
+    }
+    let win = builder.build()?;
+    if let Some(look) = with_db(app, read_appearance) {
+        let _ = apply_appearance(&win, &look);
+    }
+    win.show()
+}
+
+/// Cria o widget e abre a janela. No Windows, criar janela dentro de um comando síncrono ou de um
+/// clique de menu trava o app: quem chama precisa estar num comando async ou numa thread separada.
+pub fn create(app: &AppHandle, kind: &str, note_id: Option<&str>) -> Result<store::Widget, String> {
+    let (width, height) = default_size(kind).ok_or("Tipo de widget inválido.")?;
+    if kind != "agenda" && note_id.is_none() {
+        return Err("Escolha uma nota para o widget.".into());
+    }
+    let w = with_db(app, |c| store::create_widget(c, kind, note_id, width, height)).ok_or("Não foi possível criar o widget.")?;
+    open(app, &w).map_err(|e| e.to_string())?;
+    changed(app);
+    Ok(w)
+}
+
+/// Fecha a janela (sem passar pelo "fechar") e apaga o widget.
+pub fn remove(app: &AppHandle, id: &str) {
+    with_db(app, |c| store::delete_widget(c, id));
+    if let Some(win) = window(app, id) {
+        let _ = win.destroy();
+    }
+    changed(app);
+}
+
+fn toggle_on_top(app: &AppHandle, id: &str) {
+    let Some(w) = with_db(app, |c| store::get_widget(c, id)) else { return };
+    with_db(app, |c| store::set_widget_on_top(c, id, !w.on_top));
+    if let Some(win) = window(app, id) {
+        let _ = win.set_always_on_top(!w.on_top);
+        let _ = win.set_always_on_bottom(w.on_top);
+    }
+    changed(app);
+}
+
+/// "Abrir no brainote": a nota do post-it/checklist; a agenda só mostra o app (a tela de Agenda é da Fase 6).
+pub fn open_in_app(app: &AppHandle, note_id: Option<&str>) {
+    show_main(app);
+    if let Some(id) = note_id {
+        let _ = app.emit("open-note", id);
+    }
+}
+
+/// Menu de botão direito do próprio Windows: o widget é pequeno demais para um menu em HTML.
+pub fn popup_menu(app: &AppHandle, win: &WebviewWindow) -> tauri::Result<()> {
+    let Some(w) = id_of(win.label()).and_then(|id| with_db(app, |c| store::get_widget(c, id))) else { return Ok(()) };
+    let id = &w.id;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &MenuItem::with_id(app, format!("w-open:{id}"), "Abrir no brainote", true, None::<&str>)?,
+            &CheckMenuItem::with_id(app, format!("w-top:{id}"), "Manter por cima", true, w.on_top, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, format!("w-remove:{id}"), "Remover", true, None::<&str>)?,
+        ],
+    )?;
+    win.popup_menu(&menu)
+}
+
+/// Cliques nos menus de widget (botão direito e bandeja). Devolve `false` se o id não é de widget.
+pub fn on_menu(app: &AppHandle, menu_id: &str) -> bool {
+    let (action, id) = menu_id.split_once(':').unwrap_or((menu_id, ""));
+    match action {
+        "w-open" => {
+            let note = with_db(app, |c| store::get_widget(c, id)).and_then(|w| w.note_id);
+            open_in_app(app, note.as_deref());
+        }
+        "w-top" => toggle_on_top(app, id),
+        "w-remove" | "tw" => remove(app, id),
+        "tw-agenda" => {
+            let app = app.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = create(&app, "agenda", None) {
+                    eprintln!("widget: {e}");
+                }
+            });
+        }
+        "tw-add" => {
+            show_main(app);
+            let _ = app.emit("open-widget-menu", ());
+        }
+        _ => return false,
+    }
+    true
+}
+
+/// Abre todos os widgets salvos (na abertura do app).
+pub fn restore(app: &AppHandle) {
+    for w in with_db(app, store::list_widgets).unwrap_or_default() {
+        if let Err(e) = open(app, &w) {
+            eprintln!("widget {}: {e}", w.id);
+        }
+    }
+}
+
+/// Guarda posição e tamanho a cada movimento; fechar com Alt+F4 remove o widget.
+pub fn on_window_event(win: &tauri::Window, id: &str, event: &tauri::WindowEvent) {
+    let app = win.app_handle();
+    let scale = win.scale_factor().unwrap_or(1.0);
+    match event {
+        tauri::WindowEvent::Moved(p) if !win.is_minimized().unwrap_or(false) => {
+            let p = p.to_logical::<f64>(scale);
+            with_db(app, |c| store::set_widget_position(c, id, p.x, p.y));
+        }
+        tauri::WindowEvent::Resized(s) if s.width > 0 && s.height > 0 => {
+            let s = s.to_logical::<f64>(scale);
+            with_db(app, |c| store::set_widget_size(c, id, s.width, s.height));
+        }
+        tauri::WindowEvent::CloseRequested { .. } => {
+            with_db(app, |c| store::delete_widget(c, id));
+            changed(app);
+        }
+        _ => {}
+    }
+}

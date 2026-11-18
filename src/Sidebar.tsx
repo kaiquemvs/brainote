@@ -21,6 +21,8 @@ type Props = {
   look: Appearance;
   onLook: (change: Partial<Appearance>) => void;
   onSettings: () => void;
+  widgetMenuOpen: boolean;
+  onWidgetMenu: () => void;
   openMenu: (m: MenuState) => void;
   onChanged: () => Promise<void>;
 };
@@ -142,6 +144,10 @@ export function Sidebar(p: Props) {
             Efeito vidro
           </span>
           <span className={`sw${p.look.glass ? " is-on" : ""}`}><span className="knob" /></span>
+        </button>
+        <button className={`wbtn${p.widgetMenuOpen ? " is-on" : ""}`} data-wmenu aria-expanded={p.widgetMenuOpen} onClick={p.onWidgetMenu}>
+          <span className="nav-ic"><Icon>{paths.widgets}</Icon></span>
+          <span>Adicionar widget</span>
         </button>
       </div>
     </aside>

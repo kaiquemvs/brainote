@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type Appearance, type Folder, type Note, type Reminder } from "./api";
+import { api, type Appearance, type Folder, type Note, type Reminder, type Widget } from "./api";
 import { Editor } from "./Editor";
 import { Menu, type MenuState } from "./Menu";
 import { NoteList } from "./NoteList";
@@ -8,6 +8,7 @@ import { ReminderForm, type ReminderFormInit } from "./ReminderForm";
 import { Reminders } from "./Reminders";
 import { Settings } from "./Settings";
 import { Sidebar, SHORTCUTS } from "./Sidebar";
+import { WidgetMenu } from "./WidgetMenu";
 import { WindowButtons } from "./WindowButtons";
 
 // Atalho que ganha conteúdo numa próxima fase (Agenda: 6).
@@ -34,12 +35,23 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
   const [form, setForm] = useState<ReminderFormInit | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null); // lembrete aberto pela notificação
+  const [widgets, setWidgets] = useState<Widget[]>([]);
+  const [widgetMenuOpen, setWidgetMenuOpen] = useState(false);
 
   const refresh = async () => {
-    const [f, n, r] = await Promise.all([api.listFolders(), api.listNotes(), api.listReminders()]);
+    const [f, n, r, w] = await Promise.all([api.listFolders(), api.listNotes(), api.listReminders(), api.listWidgets()]);
     setFolders(f);
     setNotes(n);
     setReminders(r);
+    setWidgets(w);
+  };
+
+  // Post-it da nota: o botão do editor e o menu da nota fixam ou removem.
+  const postitOf = (noteId: string) => widgets.find((w) => w.kind === "postit" && w.note_id === noteId);
+  const togglePostit = (n: Note) => {
+    const w = postitOf(n.id);
+    if (w) api.deleteWidget(w.id);
+    else api.createWidget("postit", n.id);
   };
   useEffect(() => { refresh(); }, []);
 
@@ -106,13 +118,17 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
     setSelectedId(deleted);
   };
 
-  // Avisos do Rust: bandeja ("Nova nota"), notificação clicada e dados mudados fora da tela.
-  const handlers = useRef({ newNote, openReminder: (_: string | null) => {} });
+  // Avisos do Rust: bandeja, notificação clicada, widgets e dados mudados fora desta janela.
+  const handlers = useRef({ newNote, openReminder: (_: string | null) => {}, openNote: (_: string) => {} });
   handlers.current = {
     newNote,
     openReminder: (id) => {
       go("reminders");
       setHighlight(id);
+    },
+    openNote: (id) => {
+      go("all");
+      setSelectedId(id);
     },
   };
   useEffect(() => {
@@ -120,6 +136,11 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
       listen("data-changed", () => refresh()),
       listen("new-note", () => handlers.current.newNote()),
       listen<string | null>("open-reminder", (e) => handlers.current.openReminder(e.payload)),
+      listen<string>("open-note", (e) => handlers.current.openNote(e.payload)),
+      listen("open-widget-menu", () => {
+        setSideOpen(true);
+        setWidgetMenuOpen(true);
+      }),
     ];
     return () => offs.forEach((off) => off.then((f) => f()));
   }, []);
@@ -136,6 +157,8 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
           look={look}
           onLook={changeLook}
           onSettings={() => setSettingsOpen(true)}
+          widgetMenuOpen={widgetMenuOpen}
+          onWidgetMenu={() => setWidgetMenuOpen(!widgetMenuOpen)}
           openMenu={setMenu}
           onChanged={refresh}
         />
@@ -168,6 +191,8 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
             onDelete={deleteNote}
             onPin={(n) => api.setPinned(n.id, !n.pinned).then(refresh)}
             onMove={(id, folderId) => api.moveNote(id, folderId).then(refresh)}
+            hasPostit={(id) => !!postitOf(id)}
+            onPostit={togglePostit}
             sideOpen={sideOpen}
             onToggleSide={() => setSideOpen(!sideOpen)}
             openMenu={setMenu}
@@ -183,6 +208,8 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
                 reminder={noteReminder}
                 onReminder={() => setForm(noteReminder ? { reminder: noteReminder } : { noteId: selected.id, title: selected.title })}
                 onRemoveReminder={(r) => api.deleteReminder(r.id).then(refresh)}
+                postitOn={!!postitOf(selected.id)}
+                onPostit={() => togglePostit(selected)}
               />
             ) : (
               <>
@@ -200,6 +227,9 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
       {menu && <Menu menu={menu} onClose={() => setMenu(null)} />}
       {form && <ReminderForm init={form} notes={notes} onClose={() => setForm(null)} onSaved={refresh} />}
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      {widgetMenuOpen && (
+        <WidgetMenu widgets={widgets} notes={notes} noteId={selected?.id ?? null} onClose={() => setWidgetMenuOpen(false)} />
+      )}
       <div className="toast-area" role="status">
         {deleted && (
           <div className="toast">

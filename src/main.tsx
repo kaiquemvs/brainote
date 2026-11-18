@@ -8,17 +8,21 @@ import "@fontsource/inter/latin-700.css";
 import "./App.css";
 import App from "./App";
 import { api } from "./api";
+import { WidgetApp } from "./Widget";
 
 // Sem o menu de navegador (Voltar, Recarregar…) no botão direito; campos de texto mantêm copiar/colar.
 document.addEventListener("contextmenu", (e) => {
   if (!(e.target as HTMLElement).closest("input, textarea")) e.preventDefault();
 });
 
+// Janelas de widget abrem o mesmo app com "#widget=<id>" no endereço.
+const widgetId = location.hash.match(/widget=([\w-]+)/)?.[1];
+
 // Lê tema e vidro antes de desenhar, para não piscar o tema errado na abertura.
 api.getAppearance().then((look) =>
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
-      <App initialLook={look} />
+      {widgetId ? <WidgetApp id={widgetId} initialLook={look} /> : <App initialLook={look} />}
     </React.StrictMode>,
   ),
 );
