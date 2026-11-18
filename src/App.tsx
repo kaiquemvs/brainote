@@ -1,16 +1,21 @@
 import { useEffect, useState } from "react";
-import { api, type Folder, type Note } from "./api";
+import { api, type Appearance, type Folder, type Note } from "./api";
 import { Editor } from "./Editor";
 import { Menu, type MenuState } from "./Menu";
 import { NoteList } from "./NoteList";
-import { Sidebar, SHORTCUTS, type Theme } from "./Sidebar";
+import { Sidebar, SHORTCUTS } from "./Sidebar";
 import { WindowButtons } from "./WindowButtons";
 
 // Atalhos que ganham conteúdo nas próximas fases (Lembretes: 4, Agenda: 6).
 const LATER = ["agenda", "reminders"];
 
-export default function App() {
-  const [theme, setTheme] = useState<Theme>("light");
+export default function App({ initialLook }: { initialLook: Appearance }) {
+  const [look, setLook] = useState(initialLook);
+  const changeLook = (next: Partial<Appearance>) => {
+    const a = { ...look, ...next };
+    setLook(a);
+    api.setAppearance(a); // salva e troca o efeito da janela
+  };
   const [sideOpen, setSideOpen] = useState(true);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -90,15 +95,15 @@ export default function App() {
   };
 
   return (
-    <div className={`app t-${theme}`}>
+    <div className={`app t-${look.theme}${look.glass ? " g-on" : ""}`}>
       {sideOpen && (
         <Sidebar
           folders={folders}
           notes={notes}
           section={section}
           onSection={go}
-          theme={theme}
-          onTheme={setTheme}
+          look={look}
+          onLook={changeLook}
           openMenu={setMenu}
           onChanged={refresh}
         />

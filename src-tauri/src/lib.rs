@@ -1,8 +1,10 @@
 mod store;
 
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::window::{Effect, EffectsBuilder};
+use tauri::{Manager, State, Theme, WebviewWindow};
 
 struct Db(Mutex<Connection>);
 
@@ -20,6 +22,45 @@ fn folder_name(name: &str) -> Res<&str> {
         return Err("O nome da pasta não pode ficar vazio.".into());
     }
     Ok(name)
+}
+
+/// Tema ("light" ou "dark") e efeito vidro, guardados na tabela `settings`.
+#[derive(Serialize, Deserialize)]
+struct Appearance {
+    theme: String,
+    glass: bool,
+}
+
+/// Na primeira abertura: claro com vidro, como no protótipo.
+fn read_appearance(c: &Connection) -> rusqlite::Result<Appearance> {
+    Ok(Appearance {
+        theme: store::get_setting(c, "theme")?.unwrap_or_else(|| "light".into()),
+        glass: store::get_setting(c, "glass")?.is_none_or(|v| v == "1"),
+    })
+}
+
+/// Vidro = Acrylic do Windows 11 (desfoca o que está atrás da janela; o Mica ficou fraco demais).
+/// A variante clara/escura do Acrylic segue o tema da janela, por isso o `set_theme`.
+fn apply_appearance(w: &WebviewWindow, a: &Appearance) -> tauri::Result<()> {
+    w.set_theme(Some(if a.theme == "dark" { Theme::Dark } else { Theme::Light }))?;
+    w.set_effects(a.glass.then(|| EffectsBuilder::new().effect(Effect::Acrylic).build()))
+}
+
+#[tauri::command]
+fn get_appearance(db: State<Db>) -> Res<Appearance> {
+    with(&db, read_appearance)
+}
+
+#[tauri::command]
+fn set_appearance(window: WebviewWindow, db: State<Db>, appearance: Appearance) -> Res<()> {
+    if appearance.theme != "light" && appearance.theme != "dark" {
+        return Err("Tema inválido.".into());
+    }
+    with(&db, |c| {
+        store::set_setting(c, "theme", &appearance.theme)?;
+        store::set_setting(c, "glass", if appearance.glass { "1" } else { "0" })
+    })?;
+    apply_appearance(&window, &appearance).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -95,10 +136,19 @@ pub fn run() {
             // %APPDATA%\brainote\brainote.db
             let dir = app.path().data_dir()?.join("brainote");
             std::fs::create_dir_all(&dir)?;
-            app.manage(Db(Mutex::new(store::open(&dir.join("brainote.db"))?)));
+            let conn = store::open(&dir.join("brainote.db"))?;
+            // aplica o vidro antes da primeira pintura, para a janela já abrir com a aparência salva
+            if let Some(w) = app.get_webview_window("main") {
+                if let Err(e) = apply_appearance(&w, &read_appearance(&conn)?) {
+                    eprintln!("efeito vidro indisponível: {e}"); // ex.: Windows 10 não tem Mica; o app segue opaco
+                }
+            }
+            app.manage(Db(Mutex::new(conn)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            get_appearance,
+            set_appearance,
             list_folders,
             create_folder,
             rename_folder,

@@ -336,7 +336,7 @@ Uma fase por vez. Em cada uma: plano curto → construir → rodar → me passar
 - **Pronto quando:** formato texto, crio e marco checklists com o teclado e o mouse, e a prévia na lista fica correta.
 
 ### Fase 3 — Aparência e efeito vidro
-- Chave **Efeito vidro**: janela transparente com efeito do Windows (**Mica** no Windows 11, na variante clara ou escura conforme o tema) mais os tokens translúcidos `.g-on`. **Acrylic** só como alternativa: ele pode ficar lento ao arrastar ou redimensionar a janela em algumas versões do Windows.
+- Chave **Efeito vidro**: janela transparente com o **Acrylic** do Windows 11 (variante clara ou escura conforme o tema) mais os tokens translúcidos `.g-on`. O Mica foi testado e ficou fraco demais (decisão do usuário). No Windows 11 22H2 ou mais novo o Acrylic é o do próprio sistema e não trava ao arrastar; no Windows 10 ele pode ficar lento.
 - Ligar e desligar o efeito em tempo de execução, sem reiniciar.
 - Desligado: cores opacas.
 - Tema e vidro salvos nas configurações.

@@ -13,6 +13,8 @@ export type Note = {
   has_checklist: boolean;
 };
 
+export type Appearance = { theme: "light" | "dark"; glass: boolean };
+
 function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   return invoke<T>(cmd, args).catch((e) => {
     // erro do banco é raro, mas não pode passar em silêncio (ex.: salvar falhou)
@@ -22,6 +24,8 @@ function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 }
 
 export const api = {
+  getAppearance: () => call<Appearance>("get_appearance"),
+  setAppearance: (appearance: Appearance) => call<void>("set_appearance", { appearance }),
   listFolders: () => call<Folder[]>("list_folders"),
   createFolder: (name: string) => call<Folder>("create_folder", { name }),
   renameFolder: (id: string, name: string) => call<void>("rename_folder", { id, name }),

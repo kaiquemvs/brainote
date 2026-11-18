@@ -1,11 +1,9 @@
 // Barra lateral (docs/ESPECIFICACAO.md, 4.2).
 import { useState, type ReactNode, type MouseEvent } from "react";
-import { api, type Folder, type Note } from "./api";
+import { api, type Appearance, type Folder, type Note } from "./api";
 import { Icon, paths } from "./icons";
 import { menuAt, type MenuState } from "./Menu";
 import logo from "../assets/icone/svg/brainote-claro-small.svg";
-
-export type Theme = "light" | "dark";
 
 export const SHORTCUTS = [
   { id: "all", label: "Todas as notas", icon: paths.notes },
@@ -19,8 +17,8 @@ type Props = {
   notes: Note[];
   section: string;
   onSection: (id: string) => void;
-  theme: Theme;
-  onTheme: (t: Theme) => void;
+  look: Appearance;
+  onLook: (change: Partial<Appearance>) => void;
   openMenu: (m: MenuState) => void;
   onChanged: () => Promise<void>;
 };
@@ -118,15 +116,22 @@ export function Sidebar(p: Props) {
       <div style={{ flex: "none", padding: 12, borderTop: "1px solid var(--sep)", display: "flex", flexDirection: "column", gap: 10 }}>
         <div className="lbl" style={{ padding: "0 2px" }}>Aparência</div>
         <div className="seg" role="group" aria-label="Tema">
-          <button className={`seg-b${p.theme === "light" ? " is-on" : ""}`} aria-pressed={p.theme === "light"} onClick={() => p.onTheme("light")}>
+          <button className={`seg-b${p.look.theme === "light" ? " is-on" : ""}`} aria-pressed={p.look.theme === "light"} onClick={() => p.onLook({ theme: "light" })}>
             <Icon size={14}>{paths.sun}</Icon>
             Claro
           </button>
-          <button className={`seg-b${p.theme === "dark" ? " is-on" : ""}`} aria-pressed={p.theme === "dark"} onClick={() => p.onTheme("dark")}>
+          <button className={`seg-b${p.look.theme === "dark" ? " is-on" : ""}`} aria-pressed={p.look.theme === "dark"} onClick={() => p.onLook({ theme: "dark" })}>
             <Icon size={14}>{paths.moon}</Icon>
             Escuro
           </button>
         </div>
+        <button className="toggle-row" role="switch" aria-checked={p.look.glass} onClick={() => p.onLook({ glass: !p.look.glass })}>
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Icon>{paths.drop}</Icon>
+            Efeito vidro
+          </span>
+          <span className={`sw${p.look.glass ? " is-on" : ""}`}><span className="knob" /></span>
+        </button>
       </div>
     </aside>
   );

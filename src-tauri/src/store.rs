@@ -1,6 +1,6 @@
 //! Banco SQLite do brainote (docs/ESPECIFICACAO.md, seção 8).
 
-use rusqlite::{params, Connection, Result, Row};
+use rusqlite::{params, Connection, OptionalExtension, Result, Row};
 use serde::Serialize;
 use std::path::Path;
 
@@ -35,6 +35,11 @@ END;
 CREATE TRIGGER notes_ad AFTER DELETE ON notes BEGIN
   DELETE FROM notes_fts WHERE id = old.id;
 END;
+"#, r#"
+CREATE TABLE settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 "#];
 
 #[derive(Serialize)]
@@ -113,6 +118,20 @@ pub fn rename_folder(c: &Connection, id: &str, name: &str) -> Result<()> {
 /// As notas da pasta vão para "Sem pasta" (ON DELETE SET NULL).
 pub fn delete_folder(c: &Connection, id: &str) -> Result<()> {
     c.execute("DELETE FROM folders WHERE id = ?1", [id])?;
+    Ok(())
+}
+
+// ---------- Configurações ----------
+
+pub fn get_setting(c: &Connection, key: &str) -> Result<Option<String>> {
+    c.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional()
+}
+
+pub fn set_setting(c: &Connection, key: &str, value: &str) -> Result<()> {
+    c.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )?;
     Ok(())
 }
 
@@ -251,6 +270,15 @@ mod tests {
         delete_folder(&c, &pasta.id).unwrap();
         assert!(list_folders(&c).unwrap().is_empty());
         assert_eq!(get_note(&c, &n.id).unwrap().folder_id, None);
+    }
+
+    #[test]
+    fn configuracoes() {
+        let c = db();
+        assert_eq!(get_setting(&c, "theme").unwrap(), None);
+        set_setting(&c, "theme", "dark").unwrap();
+        set_setting(&c, "theme", "light").unwrap(); // gravar de novo substitui
+        assert_eq!(get_setting(&c, "theme").unwrap().as_deref(), Some("light"));
     }
 
     #[test]
