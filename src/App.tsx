@@ -146,6 +146,8 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
         setWidgetMenuOpen(true);
       }),
       listen("open-agenda", () => handlers.current.openAgenda()),
+      // tema e vidro trocados por fora (ex.: backup importado)
+      listen<Appearance>("appearance-changed", (e) => setLook(e.payload)),
     ];
     return () => offs.forEach((off) => off.then((f) => f()));
   }, []);

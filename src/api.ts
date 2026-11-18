@@ -43,6 +43,10 @@ function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 }
 
 export const api = {
+  /** caminho do arquivo salvo, ou null se cancelou */
+  exportBackup: () => call<string | null>("export_backup"),
+  /** false se cancelou */
+  importBackup: () => call<boolean>("import_backup"),
   listEvents: () => call<CalEvent[]>("list_events"),
   createEvent: (event: EventInput) => call<CalEvent>("create_event", { event }),
   updateEvent: (id: string, event: EventInput) => call<void>("update_event", { id, event }),

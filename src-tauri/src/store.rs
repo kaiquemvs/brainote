@@ -173,7 +173,39 @@ fn new_id() -> String {
 pub fn open(path: &Path) -> Result<Connection> {
     let mut conn = Connection::open(path)?;
     prepare(&mut conn)?;
+    first_run(&conn)?;
     Ok(conn)
+}
+
+/// Primeira abertura (banco vazio): pastas Pessoal e Trabalho e uma nota de boas-vindas.
+/// Acontece uma vez só: quem apagar tudo depois não recebe a nota de novo.
+fn first_run(c: &Connection) -> Result<()> {
+    if get_setting(c, "welcomed")?.is_some() {
+        return Ok(());
+    }
+    let empty: bool = c.query_row("SELECT NOT EXISTS (SELECT 1 FROM notes) AND NOT EXISTS (SELECT 1 FROM folders)", [], |r| r.get(0))?;
+    if empty {
+        create_folder(c, "Pessoal")?;
+        create_folder(c, "Trabalho")?;
+        let p = |t: &str| serde_json::json!({ "type": "paragraph", "content": [{ "type": "text", "text": t }] });
+        let item = |t: &str| serde_json::json!({ "type": "taskItem", "attrs": { "checked": false }, "content": [p(t)] });
+        let lines = [
+            "Algumas dicas para começar:",
+            "Marque este item clicando na bolinha (ou com Ctrl+Enter).",
+            "Crie checklists com o botão de checklist, no topo do editor.",
+            "Lembretes: clique no sino para ser avisado na hora certa, mesmo com a janela fechada.",
+            "Post-its: o botão de post-it fixa a nota na área de trabalho.",
+            "Ao fechar a janela, o brainote fica na bandeja, perto do relógio. Para sair de vez, use o menu da bandeja.",
+        ];
+        let doc = serde_json::json!({ "type": "doc", "content": [
+            p(lines[0]),
+            { "type": "taskList", "content": [item(lines[1]), item(lines[2])] },
+            p(lines[3]), p(lines[4]), p(lines[5]),
+        ]});
+        let note = create_note(c, None)?;
+        update_note(c, &note.id, "Bem-vindo ao brainote", &doc.to_string(), &lines.join("\n"))?;
+    }
+    set_setting(c, "welcomed", "1")
 }
 
 fn prepare(conn: &mut Connection) -> Result<()> {
@@ -220,6 +252,99 @@ pub fn rename_folder(c: &Connection, id: &str, name: &str) -> Result<()> {
 pub fn delete_folder(c: &Connection, id: &str) -> Result<()> {
     c.execute("DELETE FROM folders WHERE id = ?1", [id])?;
     Ok(())
+}
+
+// ---------- Backup (8) ----------
+
+/// Tabelas do backup, na ordem de inserção (notas dependem de pastas; lembretes, eventos e widgets de notas).
+const BACKUP_TABLES: [&str; 6] = ["folders", "notes", "reminders", "events", "widgets", "settings"];
+/// Depende do computador, não da pessoa: não sai do backup nem é restaurada.
+const LOCAL_SETTINGS: [&str; 1] = ["autostart"];
+
+fn schema_version(c: &Connection) -> Result<i64> {
+    c.pragma_query_value(None, "user_version", |r| r.get(0))
+}
+
+/// Tudo do banco num JSON: { app, schema, exported_at, tables: { tabela: [ { coluna: valor } ] } }.
+pub fn export_backup(c: &Connection) -> Result<serde_json::Value> {
+    use rusqlite::types::ValueRef;
+    use serde_json::Value;
+    let mut tables = serde_json::Map::new();
+    for t in BACKUP_TABLES {
+        let mut stmt = c.prepare(&format!("SELECT * FROM {t}"))?;
+        let cols: Vec<String> = stmt.column_names().into_iter().map(String::from).collect();
+        let rows = stmt
+            .query_map([], |r| {
+                let mut row = serde_json::Map::new();
+                for (i, col) in cols.iter().enumerate() {
+                    let v = match r.get_ref(i)? {
+                        ValueRef::Null | ValueRef::Blob(_) => Value::Null,
+                        ValueRef::Integer(n) => n.into(),
+                        ValueRef::Real(f) => f.into(),
+                        ValueRef::Text(s) => String::from_utf8_lossy(s).into(),
+                    };
+                    row.insert(col.clone(), v);
+                }
+                Ok(Value::Object(row))
+            })?
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .filter(|row| t != "settings" || !LOCAL_SETTINGS.contains(&row["key"].as_str().unwrap_or_default()))
+            .collect();
+        tables.insert(t.into(), Value::Array(rows));
+    }
+    Ok(serde_json::json!({ "app": "brainote", "schema": schema_version(c)?, "exported_at": now(), "tables": tables }))
+}
+
+/// Troca todos os dados pelos do backup, numa transação só (se algo falhar, nada muda).
+/// Só entram tabelas e colunas que existem neste banco; o resto do arquivo é ignorado.
+pub fn import_backup(c: &mut Connection, data: &serde_json::Value) -> std::result::Result<(), String> {
+    use rusqlite::types::Value as Sql;
+    use serde_json::Value;
+    if data["app"] != "brainote" {
+        return Err("Este arquivo não é um backup do brainote.".into());
+    }
+    let tables = data["tables"].as_object().ok_or("O backup está incompleto.")?;
+    let current = schema_version(c).map_err(|e| e.to_string())?;
+    if data["schema"].as_i64().unwrap_or(0) > current {
+        return Err("Este backup veio de uma versão mais nova do brainote. Atualize o app antes de importar.".into());
+    }
+    let to_sql = |v: &Value| match v {
+        Value::Null => Sql::Null,
+        Value::Bool(b) => Sql::Integer(*b as i64),
+        Value::Number(n) => n.as_i64().map(Sql::Integer).unwrap_or_else(|| Sql::Real(n.as_f64().unwrap_or(0.0))),
+        Value::String(s) => Sql::Text(s.clone()),
+        other => Sql::Text(other.to_string()),
+    };
+
+    let tx = c.transaction().map_err(|e| e.to_string())?;
+    let run = || -> Result<()> {
+        for t in BACKUP_TABLES.iter().rev() {
+            let local_ones = if *t == "settings" { format!(" WHERE key NOT IN ('{}')", LOCAL_SETTINGS.join("','")) } else { String::new() };
+            tx.execute(&format!("DELETE FROM {t}{local_ones}"), [])?;
+        }
+        for t in BACKUP_TABLES {
+            // nomes de coluna vêm do próprio banco, nunca do arquivo
+            let known: Vec<String> = tx.prepare(&format!("SELECT name FROM pragma_table_info('{t}')"))?.query_map([], |r| r.get(0))?.collect::<Result<_>>()?;
+            for row in tables.get(t).and_then(Value::as_array).into_iter().flatten() {
+                let Some(row) = row.as_object() else { continue };
+                if t == "settings" && LOCAL_SETTINGS.contains(&row.get("key").and_then(Value::as_str).unwrap_or_default()) {
+                    continue;
+                }
+                let cols: Vec<&String> = known.iter().filter(|k| row.contains_key(k.as_str())).collect();
+                if cols.is_empty() {
+                    continue;
+                }
+                let names = cols.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
+                let marks = (1..=cols.len()).map(|i| format!("?{i}")).collect::<Vec<_>>().join(", ");
+                let values: Vec<Sql> = cols.iter().map(|k| to_sql(&row[k.as_str()])).collect();
+                tx.execute(&format!("INSERT INTO {t} ({names}) VALUES ({marks})"), rusqlite::params_from_iter(values))?;
+            }
+        }
+        Ok(())
+    };
+    run().map_err(|e| format!("O backup tem dados que não puderam ser importados: {e}"))?;
+    tx.commit().map_err(|e| e.to_string())
 }
 
 // ---------- Configurações ----------
@@ -619,6 +744,59 @@ mod tests {
         let todos = list_reminders(&c).unwrap();
         assert_eq!(todos.len(), 3);
         assert_eq!(todos.iter().filter(|r| r.title == "vencido" && !r.done).count(), 1);
+    }
+
+    #[test]
+    fn primeira_abertura_uma_vez_so() {
+        let c = db();
+        first_run(&c).unwrap();
+        assert_eq!(list_folders(&c).unwrap().iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["Pessoal", "Trabalho"]);
+        let notes = list_notes(&c).unwrap();
+        assert_eq!((notes.len(), notes[0].title.as_str(), notes[0].has_checklist), (1, "Bem-vindo ao brainote", true));
+
+        // apagou tudo: não volta
+        c.execute_batch("DELETE FROM notes; DELETE FROM folders;").unwrap();
+        first_run(&c).unwrap();
+        assert!(list_notes(&c).unwrap().is_empty());
+
+        // banco de quem já usava o app (sem a marca "welcomed"): não cria nada
+        let c = db();
+        create_note(&c, None).unwrap();
+        first_run(&c).unwrap();
+        assert_eq!(list_notes(&c).unwrap().len(), 1);
+        assert!(list_folders(&c).unwrap().is_empty());
+    }
+
+    #[test]
+    fn backup_volta_igual_e_ignora_o_desconhecido() {
+        let c = db();
+        let pasta = create_folder(&c, "Trabalho").unwrap();
+        let n = create_note(&c, Some(&pasta.id)).unwrap();
+        update_note(&c, &n.id, "Nota", r#"{"type":"doc"}"#, "texto com acento: reunião").unwrap();
+        create_reminder(&c, &ReminderInput { note_id: Some(n.id.clone()), title: "Lembrar".into(), due_at: now(), repeat: "weekly".into() }).unwrap();
+        create_event(&c, &EventInput { title: "Evento".into(), starts_at: now(), ends_at: None, all_day: true, note_id: None }).unwrap();
+        create_widget(&c, "postit", Some(&n.id), 260.0, 220.0).unwrap();
+        set_setting(&c, "theme", "dark").unwrap();
+        set_setting(&c, "autostart", "1").unwrap();
+
+        let mut data = export_backup(&c).unwrap();
+        assert!(!data.to_string().contains("autostart")); // é do computador, não vai no backup
+        // campo e tabela que não existem no banco são ignorados
+        data["tables"]["notes"][0]["coluna_estranha"] = "x".into();
+        data["tables"]["tabela_estranha"] = serde_json::json!([{ "a": 1 }]);
+
+        let mut destino = db();
+        set_setting(&destino, "autostart", "0").unwrap();
+        create_note(&destino, None).unwrap(); // dado antigo que deve sumir
+        import_backup(&mut destino, &data).unwrap();
+
+        assert_eq!(export_backup(&destino).unwrap()["tables"], export_backup(&c).unwrap()["tables"]);
+        assert_eq!(get_setting(&destino, "autostart").unwrap().as_deref(), Some("0")); // a do computador fica
+        assert_eq!(search_notes(&destino, "reuniao").unwrap(), vec![n.id.clone()]); // a busca volta junto
+
+        // arquivo que não é do brainote: recusado sem mexer em nada
+        assert!(import_backup(&mut destino, &serde_json::json!({ "app": "outro" })).is_err());
+        assert_eq!(list_notes(&destino).unwrap().len(), 1);
     }
 
     #[test]

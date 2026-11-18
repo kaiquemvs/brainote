@@ -6,7 +6,9 @@ mod widgets;
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Mutex;
+use tauri_plugin_dialog::DialogExt;
 use tauri::window::{Effect, EffectsBuilder};
 use tauri::{AppHandle, Emitter, Manager, State, Theme, WebviewWindow, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
@@ -67,7 +69,15 @@ fn get_appearance(db: State<Db>) -> Res<Appearance> {
     with(&db, read_appearance)
 }
 
-/// Vale para a janela principal e para todos os widgets.
+/// Aplica a aparência na janela principal e em todos os widgets, e avisa as telas.
+fn broadcast_appearance(app: &AppHandle, a: &Appearance) -> Res<()> {
+    for w in app.webview_windows().values() {
+        apply_appearance(w, a).map_err(|e| e.to_string())?;
+    }
+    let _ = app.emit("appearance-changed", a);
+    Ok(())
+}
+
 #[tauri::command]
 fn set_appearance(app: AppHandle, db: State<Db>, appearance: Appearance) -> Res<()> {
     if appearance.theme != "light" && appearance.theme != "dark" {
@@ -77,11 +87,54 @@ fn set_appearance(app: AppHandle, db: State<Db>, appearance: Appearance) -> Res<
         store::set_setting(c, "theme", &appearance.theme)?;
         store::set_setting(c, "glass", if appearance.glass { "1" } else { "0" })
     })?;
-    for w in app.webview_windows().values() {
-        apply_appearance(w, &appearance).map_err(|e| e.to_string())?;
+    broadcast_appearance(&app, &appearance)
+}
+
+// ---------- Backup ----------
+
+/// %APPDATA%\brainote, onde fica o banco.
+fn data_dir(app: &AppHandle) -> Res<PathBuf> {
+    Ok(app.path().data_dir().map_err(|e| e.to_string())?.join("brainote"))
+}
+
+/// Salva tudo num .json escolhido pela pessoa. `None` = cancelou.
+// async: a janela "Salvar como" espera a pessoa sem travar o app
+#[tauri::command]
+async fn export_backup(app: AppHandle) -> Res<Option<String>> {
+    let name = format!("brainote-backup-{}.json", chrono::Local::now().format("%Y-%m-%d"));
+    let Some(path) = app.dialog().file().set_title("Exportar backup").add_filter("Backup do brainote", &["json"]).set_file_name(name).blocking_save_file()
+    else {
+        return Ok(None);
+    };
+    let path = path.as_path().ok_or("Escolha uma pasta do computador.")?.to_path_buf();
+    let data = with(&app.state::<Db>(), store::export_backup)?;
+    let text = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| format!("Não foi possível salvar o backup: {e}"))?;
+    Ok(Some(path.display().to_string()))
+}
+
+/// Troca todos os dados pelos de um backup. Antes, guarda uma cópia do banco atual ao lado dele.
+/// `false` = cancelou.
+#[tauri::command]
+async fn import_backup(app: AppHandle) -> Res<bool> {
+    let Some(path) = app.dialog().file().set_title("Importar backup").add_filter("Backup do brainote", &["json"]).blocking_pick_file() else {
+        return Ok(false);
+    };
+    let path = path.as_path().ok_or("Escolha um arquivo do computador.")?.to_path_buf();
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("Não foi possível ler o arquivo: {e}"))?;
+    let data: serde_json::Value = serde_json::from_str(&text).map_err(|_| "Este arquivo não é um backup do brainote.")?;
+    {
+        let db = app.state::<Db>();
+        let mut conn = db.0.lock().unwrap_or_else(|e| e.into_inner());
+        let copy = data_dir(&app)?.join(format!("brainote-antes-da-importacao-{}.db", chrono::Local::now().format("%Y-%m-%d-%H%M%S")));
+        conn.execute("VACUUM INTO ?1", [copy.to_string_lossy()])
+            .map_err(|e| format!("Não foi possível guardar a cópia do banco atual, então nada foi importado: {e}"))?;
+        store::import_backup(&mut conn, &data)?;
     }
-    let _ = app.emit("appearance-changed", appearance);
-    Ok(())
+    widgets::reopen_all(&app);
+    broadcast_appearance(&app, &with(&app.state::<Db>(), read_appearance)?)?;
+    background::changed(&app);
+    Ok(true)
 }
 
 #[tauri::command]
@@ -299,6 +352,7 @@ pub fn run() {
         // abrir o brainote de novo só traz a janela existente para frente (precisa ser o primeiro plugin)
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| background::show_main(app)))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec![AUTOSTART_ARG])))
+        .plugin(tauri_plugin_dialog::init()) // janelas "Salvar como" e "Abrir" do backup
         // guarda posição e tamanho da janela principal; quem decide se ela aparece é o setup (bandeja).
         // Os widgets guardam o lugar deles no banco.
         .plugin(
@@ -346,6 +400,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            export_backup,
+            import_backup,
             list_events,
             create_event,
             update_event,

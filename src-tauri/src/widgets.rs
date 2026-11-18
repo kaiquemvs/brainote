@@ -137,6 +137,24 @@ pub fn on_menu(app: &AppHandle, menu_id: &str) -> bool {
     true
 }
 
+/// Depois de importar um backup: fecha as janelas de widget e abre as do backup.
+pub fn reopen_all(app: &AppHandle) {
+    let open = |app: &AppHandle| app.webview_windows().into_keys().filter(|l| id_of(l).is_some()).collect::<Vec<_>>();
+    for label in open(app) {
+        if let Some(win) = app.get_webview_window(&label) {
+            let _ = win.destroy();
+        }
+    }
+    // o backup pode trazer os mesmos widgets: espera as janelas antigas sumirem para reusar os nomes
+    for _ in 0..40 {
+        if open(app).is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    restore(app);
+}
+
 /// Abre todos os widgets salvos (na abertura do app).
 pub fn restore(app: &AppHandle) {
     for w in with_db(app, store::list_widgets).unwrap_or_default() {

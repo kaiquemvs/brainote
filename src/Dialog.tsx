@@ -1,13 +1,24 @@
 // Janela modal simples (formulário de lembrete e Configurações).
 import { useEffect, useRef, type ReactNode } from "react";
 
+const FOCUSABLE = "button:not(:disabled), input, select, textarea";
+
 export function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
-    ref.current?.querySelector<HTMLElement>("input, select, button")?.focus();
-    return () => opener?.focus(); // devolve o foco do teclado para onde estava
+    const first = () => ref.current?.querySelector<HTMLElement>(FOCUSABLE);
+    first()?.focus();
+    // modal de verdade: o foco não sai da janela enquanto ela estiver aberta
+    const keepInside = (e: FocusEvent) => {
+      if (!ref.current?.contains(e.target as Node)) first()?.focus();
+    };
+    document.addEventListener("focusin", keepInside);
+    return () => {
+      document.removeEventListener("focusin", keepInside);
+      opener?.focus(); // devolve o foco do teclado para onde estava
+    };
   }, []);
 
   return (
@@ -22,6 +33,18 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
           if (e.key === "Escape") {
             e.stopPropagation();
             onClose();
+          }
+          // o Tab dá a volta dentro da janela, sem escapar para o app por trás
+          if (e.key === "Tab") {
+            const all = [...ref.current!.querySelectorAll<HTMLElement>(FOCUSABLE)];
+            const [first, last] = [all[0], all[all.length - 1]];
+            if (e.shiftKey && document.activeElement === first) {
+              e.preventDefault();
+              last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+              e.preventDefault();
+              first.focus();
+            }
           }
         }}
       >
