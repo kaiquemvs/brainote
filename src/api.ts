@@ -15,7 +15,8 @@ export type Note = {
 
 export type Appearance = { theme: "light" | "dark"; glass: boolean };
 
-export type Repeat = "none" | "daily" | "weekly" | "monthly";
+/** "none", "weekly:<dias>" (0 = domingo, ex. "weekly:1,3,5"), "monthly" ou "yearly" */
+export type Repeat = string;
 export type ReminderInput = { note_id: string | null; title: string; due_at: string; repeat: Repeat };
 export type Reminder = ReminderInput & { id: string; done: boolean; snoozed_until: string | null };
 export type Autostart = { enabled: boolean; available: boolean };

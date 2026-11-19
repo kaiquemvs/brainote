@@ -1,6 +1,6 @@
 [package]
 name = "brainote"
-version = "1.0.0"
+version = "1.1.0"
 description = "brainote"
 authors = []
 edition = "2024"

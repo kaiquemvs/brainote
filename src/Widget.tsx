@@ -36,10 +36,12 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
     };
   }, []);
 
-  // tema na raiz: as cores do post-it (.t-light .pc-amarelo) valem para o widget e para as bolinhas
+  // Tema na raiz: as cores do post-it (.t-light .pc-amarelo) valem para o widget e para as bolinhas.
+  // O post-it fica sempre com as cores claras, como um papel de verdade (pedido do usuário).
+  const theme = w?.kind === "postit" ? "light" : look.theme;
   useEffect(() => {
-    document.documentElement.className = `t-${look.theme}${look.glass ? " g-on" : ""}`;
-  }, [look]);
+    document.documentElement.className = `t-${theme}${look.glass ? " g-on" : ""}`;
+  }, [theme, look.glass]);
 
   if (!w) return null;
   const note = notes.find((n) => n.id === w.note_id);

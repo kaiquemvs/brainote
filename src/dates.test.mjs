@@ -87,3 +87,18 @@ test("agenda: compromissos do dia em ordem, dia inteiro primeiro", async () => {
   assert.equal(dayTitle(new Date(2026, 10, 18)), "18 de novembro");
   assert.equal(monthName(new Date(2026, 10, 1)), "Novembro");
 });
+
+test("repetição: resumo em texto e ajuste ao primeiro dia marcado", async () => {
+  const { repeatLabel, alignToWeekdays, weeklyDays } = await import("./dates.ts");
+  const qua = new Date(2026, 10, 18, 9, 30); // quarta-feira
+  assert.equal(repeatLabel("none", qua), "Nunca");
+  assert.equal(repeatLabel("weekly:0,1,2,3,4,5,6", qua), "Todo dia");
+  assert.equal(repeatLabel("weekly:5,1,3", qua), "Seg, Qua, Sex");
+  assert.equal(repeatLabel("monthly", qua), "Todo dia 18");
+  assert.equal(repeatLabel("yearly", qua), "Todo 18 de novembro");
+  assert.deepEqual(weeklyDays("weekly:1,3"), [1, 3]);
+  assert.deepEqual(weeklyDays("monthly"), []);
+  // quarta marcada: fica; só segunda e sexta: anda até sexta 20/11, mesmo horário
+  assert.equal(alignToWeekdays(qua, [3]).getTime(), qua.getTime());
+  assert.equal(alignToWeekdays(qua, [1, 5]).getTime(), new Date(2026, 10, 20, 9, 30).getTime());
+});

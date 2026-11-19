@@ -1,43 +1,48 @@
-// Criar ou editar lembrete (docs/ESPECIFICACAO.md, 4.6), pelo sino do editor ou pela tela de Lembretes.
+// Criar ou editar lembrete (docs/ESPECIFICACAO.md, 4.6 e 13 — versão 1.1), pelo sino do editor ou pela tela de Lembretes:
+// data no calendário, hora nas rodas e repetição por dias da semana, mensal ou anual.
 import { useState } from "react";
-import { api, type Note, type Reminder, type Repeat } from "./api";
-import { dateInput, quickDue, timeInput, toLocalIso } from "./dates";
+import { api, type Note, type Reminder } from "./api";
+import { alignToWeekdays, repeatLabel, toLocalIso, weeklyDays } from "./dates";
 import { Dialog } from "./Dialog";
+import { DatePicker, TimeWheels } from "./Pickers";
+import { noteOptions, Select } from "./Select";
 
 /** Editar um lembrete, ou criar um novo (opcionalmente já ligado a uma nota). */
 export type ReminderFormInit = { reminder: Reminder } | { noteId: string | null; title: string };
 
-type Mode = "today" | "tomorrow" | "monday" | "custom";
-const QUICK: [Mode, string][] = [
-  ["today", "Hoje 18:00"],
-  ["tomorrow", "Amanhã 09:00"],
-  ["monday", "Próxima segunda 09:00"],
-  ["custom", "Personalizado"],
-];
-const REPEAT: [Repeat, string][] = [
-  ["none", "Não repetir"],
-  ["daily", "Todo dia"],
-  ["weekly", "Toda semana"],
-  ["monthly", "Todo mês"],
+const DAYS = [
+  ["D", "domingo"],
+  ["S", "segunda-feira"],
+  ["T", "terça-feira"],
+  ["Q", "quarta-feira"],
+  ["Q", "quinta-feira"],
+  ["S", "sexta-feira"],
+  ["S", "sábado"],
 ];
 
 type Props = { init: ReminderFormInit; notes: Note[]; onClose: () => void; onSaved: () => void };
 
 export function ReminderForm({ init, notes, onClose, onSaved }: Props) {
-  const now = new Date();
   const editing = "reminder" in init ? init.reminder : null;
-  const start = editing ? new Date(editing.snoozed_until ?? editing.due_at) : quickDue("tomorrow", now);
-  const lateToday = now >= quickDue("today", now); // depois das 18h, "Hoje 18:00" já passou
+  // novo lembrete: próxima hora cheia (19:12 → 20:00)
+  const start = editing ? new Date(editing.snoozed_until ?? editing.due_at) : new Date(Math.ceil(Date.now() / 3_600_000) * 3_600_000);
 
   const [title, setTitle] = useState("reminder" in init ? init.reminder.title : init.title);
-  const [mode, setMode] = useState<Mode>(editing ? "custom" : lateToday ? "tomorrow" : "today");
-  const [date, setDate] = useState(dateInput(start));
-  const [time, setTime] = useState(timeInput(start));
+  const [day, setDay] = useState(start);
+  const [time, setTime] = useState({ h: start.getHours(), m: start.getMinutes() });
+  const [repeat, setRepeat] = useState(editing?.repeat ?? "none");
   const [noteId, setNoteId] = useState(editing ? editing.note_id : "noteId" in init ? init.noteId : null);
-  const [repeat, setRepeat] = useState<Repeat>(editing ? editing.repeat : "none");
 
-  const due = mode === "custom" ? new Date(`${date}T${time}`) : quickDue(mode, now);
-  const valid = title.trim() !== "" && !isNaN(due.getTime());
+  const days = weeklyDays(repeat);
+  const chosen = new Date(day.getFullYear(), day.getMonth(), day.getDate(), time.h, time.m);
+  const due = alignToWeekdays(chosen, days); // repete só em certos dias: começa no primeiro dia marcado
+  const valid = title.trim() !== "";
+
+  const toggleDay = (d: number) => {
+    const next = days.includes(d) ? days.filter((x) => x !== d) : [...days, d].sort();
+    setRepeat(next.length ? `weekly:${next.join(",")}` : "none");
+  };
+  const toggleMode = (mode: "monthly" | "yearly") => setRepeat(repeat === mode ? "none" : mode);
 
   const save = async () => {
     if (!valid) return;
@@ -63,48 +68,45 @@ export function ReminderForm({ init, notes, onClose, onSaved }: Props) {
           <input className="inp" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="O que lembrar?" />
         </label>
 
-        <div className="fld" role="group" aria-label="Quando">
+        <div className="fld">
           <span className="lbl">Quando</span>
-          <div className="picks">
-            {QUICK.map(([m, label]) => (
+          <DatePicker label="Data" value={day} onChange={setDay} />
+          <TimeWheels label="Hora" hours={time.h} minutes={time.m} onChange={(h, m) => setTime({ h, m })} />
+        </div>
+
+        <div className="fld rep">
+          <div className="rep-head">
+            <span className="lbl">Repetir</span>
+            <span className="t2" aria-live="polite">{repeatLabel(repeat, due)}</span>
+          </div>
+          <div className="rep-days" role="group" aria-label="Repetir nos dias da semana">
+            {DAYS.map(([letter, name], d) => (
               <button
-                key={m}
+                key={d}
                 type="button"
-                className={`pick${mode === m ? " is-on" : ""}`}
-                aria-pressed={mode === m}
-                disabled={m === "today" && lateToday}
-                onClick={() => setMode(m)}
+                className={`rep-day${days.includes(d) ? " is-on" : ""}`}
+                aria-label={name}
+                aria-pressed={days.includes(d)}
+                onClick={() => toggleDay(d)}
               >
-                {label}
+                {letter}
               </button>
             ))}
           </div>
-          {mode === "custom" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 8 }}>
-              <input className="inp" type="date" aria-label="Data" value={date} onChange={(e) => setDate(e.target.value)} />
-              <input className="inp" type="time" aria-label="Hora" value={time} onChange={(e) => setTime(e.target.value)} />
-            </div>
-          )}
+          <div className="picks">
+            <button type="button" className={`pick${repeat === "monthly" ? " is-on" : ""}`} aria-pressed={repeat === "monthly"} onClick={() => toggleMode("monthly")}>
+              Mensal · dia {chosen.getDate()}
+            </button>
+            <button type="button" className={`pick${repeat === "yearly" ? " is-on" : ""}`} aria-pressed={repeat === "yearly"} onClick={() => toggleMode("yearly")}>
+              Anual · {repeatLabel("yearly", chosen).replace("Todo ", "")}
+            </button>
+          </div>
         </div>
 
-        <label className="fld">
+        <div className="fld">
           <span className="lbl">Nota vinculada</span>
-          <select className="inp" value={noteId ?? ""} onChange={(e) => setNoteId(e.target.value || null)}>
-            <option value="">Nenhuma</option>
-            {notes.map((n) => (
-              <option key={n.id} value={n.id}>{n.title.trim() || "Nova nota"}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="fld">
-          <span className="lbl">Repetir</span>
-          <select className="inp" value={repeat} onChange={(e) => setRepeat(e.target.value as Repeat)}>
-            {REPEAT.map(([r, label]) => (
-              <option key={r} value={r}>{label}</option>
-            ))}
-          </select>
-        </label>
+          <Select label="Nota vinculada" value={noteId ?? ""} onChange={(v) => setNoteId(v || null)} options={noteOptions(notes)} />
+        </div>
 
         <div className="dlg-actions">
           {editing && (

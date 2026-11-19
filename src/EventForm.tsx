@@ -1,8 +1,10 @@
-// Criar ou editar evento da Agenda (docs/ESPECIFICACAO.md, 4.5).
+// Criar ou editar evento da Agenda (docs/ESPECIFICACAO.md, 4.5); data no calendário e horas nas rodas (versão 1.1).
 import { useState } from "react";
 import { api, type CalEvent, type Note } from "./api";
-import { dateInput, timeInput, toLocalIso } from "./dates";
+import { toLocalIso } from "./dates";
 import { Dialog } from "./Dialog";
+import { DatePicker, TimeWheels } from "./Pickers";
+import { noteOptions, Select } from "./Select";
 
 /** Editar um evento, ou criar um novo no dia escolhido no calendário. */
 export type EventFormInit = { event: CalEvent } | { day: Date };
@@ -16,17 +18,19 @@ export function EventForm({ init, notes, onClose, onSaved }: Props) {
     : new Date(init.day.getFullYear(), init.day.getMonth(), init.day.getDate(), 9);
 
   const [title, setTitle] = useState(editing?.title ?? "");
-  const [date, setDate] = useState(dateInput(start));
+  const end = editing?.ends_at ? new Date(editing.ends_at) : null;
+  const [day, setDay] = useState(start);
   const [allDay, setAllDay] = useState(editing?.all_day ?? false);
-  const [from, setFrom] = useState(timeInput(start));
-  const [to, setTo] = useState(editing?.ends_at ? timeInput(new Date(editing.ends_at)) : "");
+  const [from, setFrom] = useState({ h: start.getHours(), m: start.getMinutes() });
+  const [hasEnd, setHasEnd] = useState(!!end);
+  const [to, setTo] = useState(end ? { h: end.getHours(), m: end.getMinutes() } : { h: (start.getHours() + 1) % 24, m: start.getMinutes() });
   const [noteId, setNoteId] = useState(editing?.note_id ?? null);
 
-  const startsAt = new Date(`${date}T${allDay ? "00:00" : from}`);
-  const endsAt = !allDay && to ? new Date(`${date}T${to}`) : null;
+  const at = (t: { h: number; m: number }) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), t.h, t.m);
+  const startsAt = allDay ? at({ h: 0, m: 0 }) : at(from);
+  const endsAt = !allDay && hasEnd ? at(to) : null;
   const problem =
     !title.trim() ? "Dê um título ao evento."
-    : isNaN(startsAt.getTime()) ? "Escolha a data e a hora."
     : endsAt && endsAt < startsAt ? "A hora de fim é antes do início."
     : null;
 
@@ -60,10 +64,10 @@ export function EventForm({ init, notes, onClose, onSaved }: Props) {
           <input className="inp" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nome do compromisso" />
         </label>
 
-        <label className="fld">
+        <div className="fld">
           <span className="lbl">Data</span>
-          <input className="inp" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
+          <DatePicker label="Data" value={day} onChange={setDay} />
+        </div>
 
         <button type="button" className="toggle-row" role="switch" aria-checked={allDay} onClick={() => setAllDay(!allDay)}>
           <span>Dia inteiro</span>
@@ -71,27 +75,29 @@ export function EventForm({ init, notes, onClose, onSaved }: Props) {
         </button>
 
         {!allDay && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <label className="fld">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, alignItems: "start" }}>
+            <div className="fld">
               <span className="lbl">Início</span>
-              <input className="inp" type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
-            </label>
-            <label className="fld">
-              <span className="lbl">Fim (opcional)</span>
-              <input className="inp" type="time" value={to} onChange={(e) => setTo(e.target.value)} />
-            </label>
+              <TimeWheels label="Início" hours={from.h} minutes={from.m} onChange={(h, m) => setFrom({ h, m })} />
+            </div>
+            <div className="fld">
+              <button type="button" className="toggle-row" role="switch" aria-checked={hasEnd} onClick={() => setHasEnd(!hasEnd)} style={{ height: 18, padding: 0 }}>
+                <span className="lbl">Fim</span>
+                <span className={`sw sw-sm${hasEnd ? " is-on" : ""}`}><span className="knob" /></span>
+              </button>
+              {hasEnd ? (
+                <TimeWheels label="Fim" hours={to.h} minutes={to.m} onChange={(h, m) => setTo({ h, m })} />
+              ) : (
+                <p className="t2" style={{ margin: "70px 0 0", fontSize: 12, textAlign: "center" }}>Sem hora de fim</p>
+              )}
+            </div>
           </div>
         )}
 
-        <label className="fld">
+        <div className="fld">
           <span className="lbl">Nota vinculada</span>
-          <select className="inp" value={noteId ?? ""} onChange={(e) => setNoteId(e.target.value || null)}>
-            <option value="">Nenhuma</option>
-            {notes.map((n) => (
-              <option key={n.id} value={n.id}>{n.title.trim() || "Nova nota"}</option>
-            ))}
-          </select>
-        </label>
+          <Select label="Nota vinculada" value={noteId ?? ""} onChange={(v) => setNoteId(v || null)} options={noteOptions(notes)} />
+        </div>
 
         {problem && title && <p className="t2" role="alert" style={{ margin: 0, fontSize: 12 }}>{problem}</p>}
 

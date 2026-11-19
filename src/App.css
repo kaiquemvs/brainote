@@ -11,6 +11,7 @@
   --w-shadow: 0 14px 40px rgba(40,30,80,.22);
   --rim: inset 0 0 0 1px rgba(0,0,0,.04);
   --blur: none;
+  --scroll: rgba(0,0,0,.22);  --scroll-hover: rgba(0,0,0,.38);
 }
 .t-dark {
   --text: #F2F2F3;  --text2: #A8A8AE;
@@ -24,6 +25,7 @@
   --w-shadow: 0 14px 40px rgba(0,0,0,.45);
   --rim: inset 0 0 0 1px rgba(255,255,255,.06);
   --blur: none;
+  --scroll: rgba(255,255,255,.2);  --scroll-hover: rgba(255,255,255,.36);
 }
 
 /* Efeito vidro: superfícies translúcidas sobre o Acrylic do Windows (Fase 3) */
@@ -275,3 +277,54 @@ button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .badge { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--field); color: var(--text2); }
 .badge.is-rem { background: var(--chip); color: var(--acc); }
 .dlg-warn { margin-top: 10px; padding: 12px; border-radius: 10px; background: var(--chip); font-size: 13px; line-height: 1.45; }
+
+/* Barra de rolagem integrada: fina, arredondada, nas cores do tema (translúcida também no vidro) */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: var(--scroll) padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-hover); }
+
+/* Lista suspensa própria (Select.tsx) */
+.sel-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; cursor: pointer; }
+.sel-chev { display: inline-flex; color: var(--text2); transform: rotate(90deg); transition: transform .15s; }
+.sel-btn[aria-expanded="true"] .sel-chev { transform: rotate(-90deg); }
+.sel-pop { position: fixed; z-index: 40; box-sizing: border-box; max-height: 264px; overflow-y: auto; padding: 6px; border-radius: 12px; background: var(--pop); backdrop-filter: var(--blur); color: var(--text); box-shadow: 0 14px 40px rgba(0,0,0,.25), 0 0 0 1px var(--sep); outline: none; }
+.sel-opt { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px 0 6px; border-radius: 8px; font-size: 14px; cursor: pointer; }
+.sel-opt.is-active { background: var(--hover); }
+.sel-opt[aria-selected="true"] { color: var(--acc); font-weight: 600; }
+.sel-pop:focus-visible .sel-opt.is-active { outline: 2px solid var(--acc); outline-offset: -2px; }
+
+/* Calendário em popover (Pickers.tsx) */
+.dp { position: fixed; z-index: 40; width: 292px; box-sizing: border-box; padding: 12px 12px 10px; border-radius: 14px; background: var(--pop); backdrop-filter: var(--blur); color: var(--text); box-shadow: 0 14px 40px rgba(0,0,0,.25), 0 0 0 1px var(--sep); outline: none; }
+.dp-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; font-size: 14px; font-weight: 600; }
+.dp-nav { width: 28px; height: 28px; }
+.dp-month { margin: 2px 2px 8px; font-size: 12px; }
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dp-wk { text-align: center; font-size: 12px; font-weight: 600; color: var(--text2); padding: 4px 0 6px; }
+.dp-day { height: 34px; border: 0; border-radius: 50%; background: transparent; color: var(--text); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.dp-day:hover { background: var(--hover); }
+.dp-day.is-today { box-shadow: inset 0 0 0 1.5px var(--acc); }
+.dp-day.is-sel { background: var(--accfill); color: var(--acctick); font-weight: 700; }
+.dp:focus-visible .dp-day.is-focus { outline: 2px solid var(--acc); outline-offset: 1px; }
+
+/* Rodas de hora no estilo do relógio do iPhone (Pickers.tsx) */
+.wheels { position: relative; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 4px 0; }
+.wheels-band { position: absolute; left: 0; right: 0; margin-top: 4px; border-radius: 10px; background: var(--field); pointer-events: none; }
+.wheels-sep { position: relative; font-size: 22px; font-weight: 600; color: var(--text2); }
+.wheel { position: relative; width: 64px; overflow: hidden; cursor: ns-resize; outline: none; border-radius: 10px; }
+.wheel:focus-visible { box-shadow: 0 0 0 2px var(--acc); }
+.wheel-list { transition: transform .18s ease-out; }
+.wheel-n { display: flex; align-items: center; justify-content: center; font-size: 19px; font-variant-numeric: tabular-nums; color: var(--text2); cursor: pointer; transition: opacity .18s; }
+.wheel-n.is-on { font-size: 24px; font-weight: 600; color: var(--text); }
+
+/* Repetir do lembrete: bolinhas dos dias da semana (como no relógio do iPhone) */
+.rep { padding: 12px; border-radius: 12px; background: var(--field); }
+.rep-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; padding-bottom: 8px; border-bottom: 1px solid var(--sep); }
+.rep-days { display: flex; justify-content: space-between; gap: 4px; padding: 4px 0; }
+.rep-day { width: 38px; height: 38px; border: 0; border-radius: 50%; background: var(--hover); color: var(--text); font-size: 14px; font-weight: 700; cursor: pointer; }
+.rep-day:hover { background: var(--sep); }
+.rep-day.is-on { background: var(--accfill); color: var(--acctick); }
+.rep-day:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.sw-sm { width: 30px; height: 18px; }
+.sw-sm .knob { width: 14px; height: 14px; }
+.sw-sm.is-on .knob { transform: translateX(12px); }

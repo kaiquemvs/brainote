@@ -150,3 +150,30 @@ export const dayKicker = (d: Date, now: Date) => cap(weekdayLong.format(d)) + (i
 export const dayTitle = (d: Date) => dayMonth.format(d);
 /** "Novembro". */
 export const monthName = (d: Date) => cap(monthOnly.format(d));
+
+// ---------- Repetição dos lembretes (versão 1.1) ----------
+
+const WEEK_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const dayLong = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long" });
+
+/** Dias de "weekly:1,3,5" (0 = domingo); lista vazia se não for semanal. */
+export const weeklyDays = (repeat: string): number[] =>
+  repeat.startsWith("weekly:") ? repeat.slice(7).split(",").filter(Boolean).map(Number) : [];
+
+/** "Nunca", "Todo dia", "Seg, Qua, Sex", "Todo dia 19" ou "Todo 19 de novembro". */
+export function repeatLabel(repeat: string, due: Date): string {
+  const days = weeklyDays(repeat);
+  if (days.length === 7) return "Todo dia";
+  if (days.length) return [...days].sort().map((d) => WEEK_SHORT[d]).join(", ");
+  if (repeat === "monthly") return `Todo dia ${due.getDate()}`;
+  if (repeat === "yearly") return `Todo ${dayLong.format(due)}`;
+  return "Nunca";
+}
+
+/** Primeiro dia (a partir de `d`, mesmo horário) que cai num dos dias da semana marcados. */
+export function alignToWeekdays(d: Date, days: number[]): Date {
+  if (!days.length) return d;
+  const out = new Date(d);
+  while (!days.includes(out.getDay())) out.setDate(out.getDate() + 1);
+  return out;
+}

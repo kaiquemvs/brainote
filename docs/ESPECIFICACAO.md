@@ -381,11 +381,11 @@ Uma fase por vez. Em cada uma: plano curto → construir → rodar → me passar
 
 ## 11. Fora do escopo da v1 (ideias para depois)
 
-- Integração com o calendário do Outlook/Microsoft 365. Exige registrar um app no Entra ID da empresa.
-- Sincronização entre computadores ou celular.
-- Imagens e anexos dentro das notas, tabelas e nota com senha.
+- Imagens e anexos dentro das notas, tabelas e nota com senha: **planejado para a versão 1.2** (seção 13).
+- Agenda externa: **planejada para a versão 1.3** pelo link ICS ("Publicar calendário" do Outlook, ou o link iCal do Google), só leitura. A integração completa pelo Microsoft Graph exige registrar um app no Entra ID; na conta corporativa, o TI precisa liberar.
 - Atalho global de teclado para nota rápida.
 - Variante escura do ícone no Windows.
+- **Fora do projeto (decisão do usuário):** sincronização entre computadores ou com o celular.
 
 ---
 
@@ -398,3 +398,34 @@ Uma fase por vez. Em cada uma: plano curto → construir → rodar → me passar
 - **Uma classe JavaScript** (`class Component extends DCLogic`) com os dados de exemplo e os comportamentos.
 
 Use para entender a **estrutura das telas, as classes CSS, as medidas e os comportamentos**. Os conteúdos (notas, tarefas, eventos) são **exemplos** e não devem ir para o app. Referências de imagem `/_blob/...` não funcionam fora do protótipo: o ícone oficial está em `assets/icone/`.
+
+---
+
+## 13. Versões seguintes
+
+### Versão 1.1 — melhorias do dia a dia (em dois lotes)
+
+**Lote A — visual e lembretes**
+- **Post-it:** usa as cores claras (`.t-light`) nos dois temas; os outros widgets seguem o tema.
+- **Barra de rolagem** integrada: fina, arredondada, nas cores do tema e translúcida com o efeito vidro.
+- **Listas suspensas** próprias (no lugar das listas nativas do Windows): cantos arredondados, cores do tema, vidro e uso pelo teclado.
+- **Seletor de data:** calendário em popover (mês com setas, hoje destacado, dia escolhido em círculo).
+- **Seletor de hora:** duas "rodas" (horas e minutos) no estilo do relógio do iPhone, com a faixa de seleção no meio; gira com a roda do mouse, com as setas do teclado ou clicando no número.
+- Os dois seletores valem para **lembretes e eventos**.
+- **Formulário de lembrete:** sem os atalhos de horário; já abre na data e hora.
+- **Repetir:** resumo em texto ("Nunca", "Seg, Qua, Sex", "Todo dia 19", "Todo 19 de novembro"); bolinhas **D S T Q Q S S** para repetir semanalmente nos dias escolhidos (as 7 = todo dia); opções **Mensal** (todo dia X, pelo dia da data) e **Anual** (todo dia X do mês Y).
+  - No banco, `reminders.repeat` passa a guardar `none`, `weekly:<dias>` (0 = domingo … 6 = sábado, ex. `weekly:1,3,5`), `monthly` ou `yearly`. Os lembretes antigos são convertidos: `daily` → `weekly:0,1,2,3,4,5,6`; `weekly` → o dia da semana do lembrete.
+  - Mensal de dia 31 cai no último dia dos meses menores, sem "encolher" nos meses seguintes; anual de 29/02 cai em 28/02 nos anos não bissextos.
+
+**Lote B — edição**
+- **Exportar nota** em `.md` (padrão: mantém títulos, listas, checklists e negrito) ou `.txt`, por um ícone discreto na barra do editor ("Salvar como"). As notas já ficam salvas no banco; isto é uma cópia fora do app.
+- **Arrastar notas** da lista e soltar numa pasta da barra lateral (move a nota).
+- **Marca-texto:** tons pastel de azul, amarelo, verde, vermelho e laranja (versões ajustadas no tema escuro). Selecionar o texto e escolher a cor, ou ligar o **modo caneta**: cada trecho arrastado fica marcado até desligar.
+- **Corretor ortográfico** de português do Brasil e inglês, com sugestões no botão direito da palavra errada.
+
+### Versão 1.2 — conteúdo rico
+- Imagens: importar, arrastar e **colar**; guardadas como arquivos em `%APPDATA%\brainote\anexos` (o backup passa a ser `.zip`).
+- Anexos de qualquer tipo, abertos no programa padrão; tabelas; notas com senha (conteúdo criptografado; sem recuperação se a senha for esquecida; fora da busca, da prévia e dos widgets).
+
+### Versão 1.3 — agenda externa
+- Ler um calendário pelo link ICS e mostrar os compromissos na Agenda (só leitura).

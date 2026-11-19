@@ -1,6 +1,6 @@
 //! Banco SQLite do brainote (docs/ESPECIFICACAO.md, seção 8).
 
-use chrono::{DateTime, Days, Local, Months, SecondsFormat};
+use chrono::{DateTime, Datelike, Days, Local, Months, SecondsFormat};
 use rusqlite::{params, Connection, OptionalExtension, Result, Row};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -77,6 +77,11 @@ CREATE TABLE events (
   all_day   INTEGER NOT NULL DEFAULT 0,
   note_id   TEXT REFERENCES notes(id) ON DELETE SET NULL
 );
+"#, r#"
+-- Versão 1.1: repetição por dias da semana ("weekly:1,3,5"), mensal e anual.
+-- O dia da semana sai do horário local gravado (os 19 primeiros caracteres), não do UTC.
+UPDATE reminders SET repeat = 'weekly:0,1,2,3,4,5,6' WHERE repeat = 'daily';
+UPDATE reminders SET repeat = 'weekly:' || CAST(strftime('%w', substr(due_at, 1, 19)) AS INTEGER) WHERE repeat = 'weekly';
 "#];
 
 #[derive(Serialize)]
@@ -104,7 +109,7 @@ pub struct Reminder {
     pub note_id: Option<String>,
     pub title: String,
     pub due_at: String,
-    /// none, daily, weekly ou monthly
+    /// none, weekly:<dias da semana> (0 = domingo), monthly ou yearly
     pub repeat: String,
     pub done: bool,
     pub snoozed_until: Option<String>,
@@ -451,19 +456,31 @@ pub fn mark_notified(c: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
-/// Próxima ocorrência depois de `now`. Conta sempre a partir da data original, para o
-/// mensal de dia 31 não "encolher" (31/01 → 28/02 → 31/03, e não 28/03).
+/// Dias da semana de `weekly:1,3,5` (0 = domingo … 6 = sábado); `None` se não for semanal ou estiver inválido.
+pub fn weekly_days(repeat: &str) -> Option<Vec<u32>> {
+    let days: Vec<u32> = repeat.strip_prefix("weekly:")?.split(',').map(|d| d.parse().ok().filter(|d| *d < 7)).collect::<Option<_>>()?;
+    (!days.is_empty()).then_some(days)
+}
+
+/// Próxima ocorrência depois de `now`, no mesmo horário.
+/// - `weekly:<dias>`: o próximo dia marcado (as 7 bolinhas = todo dia).
+/// - `monthly` / `yearly`: conta sempre a partir da data original, para o dia 31 não "encolher"
+///   (31/01 → 28/02 → 31/03) e o 29/02 voltar nos anos bissextos.
 fn next_due(due_at: &str, repeat: &str, now: DateTime<Local>) -> Option<String> {
     let due = DateTime::parse_from_rfc3339(due_at).ok()?;
-    (1..)
-        .map_while(|k: u32| match repeat {
-            "daily" => due.checked_add_days(Days::new(k.into())),
-            "weekly" => due.checked_add_days(Days::new(7 * u64::from(k))),
-            "monthly" => due.checked_add_months(Months::new(k)),
-            _ => None,
-        })
-        .find(|d| *d > now)
-        .map(|d| d.to_rfc3339_opts(SecondsFormat::Secs, false))
+    let next = if let Some(days) = weekly_days(repeat) {
+        // atrasado há muito tempo: pula para perto de hoje antes de procurar o próximo dia marcado
+        let skip = (now.with_timezone(due.offset()) - due).num_days().max(0) as u64;
+        (1..=8).filter_map(|k| due.checked_add_days(Days::new(skip + k))).find(|d| days.contains(&d.weekday().num_days_from_sunday()) && *d > now)
+    } else {
+        let months = match repeat {
+            "monthly" => 1,
+            "yearly" => 12,
+            _ => return None,
+        };
+        (1..).map_while(|k: u32| due.checked_add_months(Months::new(k * months))).find(|d| *d > now)
+    };
+    next.map(|d| d.to_rfc3339_opts(SecondsFormat::Secs, false))
 }
 
 // ---------- Eventos (Agenda) ----------
@@ -712,9 +729,45 @@ mod tests {
         // conta da data original: março volta a ser dia 31
         assert_eq!(next_due(jan31, "monthly", at("2027-03-01T00:00:00-03:00")).unwrap(), "2027-03-31T09:00:00-03:00");
         // atrasado há dias: pula direto para a próxima no futuro
-        assert_eq!(next_due(jan31, "daily", at("2027-02-05T10:00:00-03:00")).unwrap(), "2027-02-06T09:00:00-03:00");
-        assert_eq!(next_due(jan31, "weekly", at("2027-01-31T09:00:00-03:00")).unwrap(), "2027-02-07T09:00:00-03:00");
+        // todo dia (as 7 bolinhas), atrasado há dias: pula direto para a próxima no futuro
+        assert_eq!(next_due(jan31, "weekly:0,1,2,3,4,5,6", at("2027-02-05T10:00:00-03:00")).unwrap(), "2027-02-06T09:00:00-03:00");
+        // 31/01/2027 é domingo; só domingo = semana seguinte
+        assert_eq!(next_due(jan31, "weekly:0", at("2027-01-31T09:00:00-03:00")).unwrap(), "2027-02-07T09:00:00-03:00");
+        // seg, qua e sex: depois de domingo vem segunda; atrasado desde janeiro, em 10/03 (quarta, 10h) vem sexta 12/03
+        assert_eq!(next_due(jan31, "weekly:1,3,5", at("2027-01-31T09:00:00-03:00")).unwrap(), "2027-02-01T09:00:00-03:00");
+        assert_eq!(next_due(jan31, "weekly:1,3,5", at("2027-03-10T10:00:00-03:00")).unwrap(), "2027-03-12T09:00:00-03:00");
+        // anual: 29/02 cai em 28/02 nos anos comuns e volta a 29/02 no bissexto
+        let bissexto = "2028-02-29T08:00:00-03:00";
+        assert_eq!(next_due(bissexto, "yearly", at("2028-03-01T00:00:00-03:00")).unwrap(), "2029-02-28T08:00:00-03:00");
+        assert_eq!(next_due(bissexto, "yearly", at("2031-03-01T00:00:00-03:00")).unwrap(), "2032-02-29T08:00:00-03:00");
+        assert_eq!(next_due(jan31, "weekly:", at("2027-01-01T00:00:00-03:00")), None); // sem dias = não repete
         assert_eq!(next_due(jan31, "none", at("2027-01-01T00:00:00-03:00")), None);
+    }
+
+    #[test]
+    fn migracao_da_repeticao_antiga() {
+        // banco como estava na versão 1.0 (5 migrações) com lembretes no formato antigo
+        let mut c = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..5] {
+            c.execute_batch(sql).unwrap();
+        }
+        c.pragma_update(None, "user_version", 5).unwrap();
+        for (id, repeat, due) in [
+            ("dia", "daily", "2026-11-18T09:00:00-03:00"),
+            ("semana", "weekly", "2026-11-18T22:00:00-03:00"), // quarta 22h = quinta 01h em UTC
+            ("mes", "monthly", "2026-11-18T09:00:00-03:00"),
+            ("nunca", "none", "2026-11-18T09:00:00-03:00"),
+        ] {
+            c.execute("INSERT INTO reminders (id, title, due_at, repeat) VALUES (?1, 'x', ?2, ?3)", params![id, due, repeat]).unwrap();
+        }
+        prepare(&mut c).unwrap();
+        let repeat = |id: &str| c.query_row("SELECT repeat FROM reminders WHERE id = ?1", [id], |r| r.get::<_, String>(0)).unwrap();
+        assert_eq!(repeat("dia"), "weekly:0,1,2,3,4,5,6");
+        assert_eq!(repeat("semana"), "weekly:3"); // continua quarta-feira
+        assert_eq!(repeat("mes"), "monthly");
+        assert_eq!(repeat("nunca"), "none");
+        assert_eq!(weekly_days("weekly:1,3,5"), Some(vec![1, 3, 5]));
+        assert_eq!(weekly_days("weekly:9"), None);
     }
 
     #[test]
@@ -724,7 +777,7 @@ mod tests {
         let novo = |titulo: &str, quando: String, repeat: &str| {
             create_reminder(&c, &ReminderInput { note_id: None, title: titulo.into(), due_at: quando, repeat: repeat.into() }).unwrap()
         };
-        let vencido = novo("vencido", hora(-5), "weekly");
+        let vencido = novo("vencido", hora(-5), "weekly:0,1,2,3,4,5,6");
         novo("futuro", hora(60), "none");
 
         let ids = |c: &Connection| due_reminders(c).unwrap().into_iter().map(|d| d.title).collect::<Vec<_>>();
@@ -773,7 +826,7 @@ mod tests {
         let pasta = create_folder(&c, "Trabalho").unwrap();
         let n = create_note(&c, Some(&pasta.id)).unwrap();
         update_note(&c, &n.id, "Nota", r#"{"type":"doc"}"#, "texto com acento: reunião").unwrap();
-        create_reminder(&c, &ReminderInput { note_id: Some(n.id.clone()), title: "Lembrar".into(), due_at: now(), repeat: "weekly".into() }).unwrap();
+        create_reminder(&c, &ReminderInput { note_id: Some(n.id.clone()), title: "Lembrar".into(), due_at: now(), repeat: "weekly:1".into() }).unwrap();
         create_event(&c, &EventInput { title: "Evento".into(), starts_at: now(), ends_at: None, all_day: true, note_id: None }).unwrap();
         create_widget(&c, "postit", Some(&n.id), 260.0, 220.0).unwrap();
         set_setting(&c, "theme", "dark").unwrap();

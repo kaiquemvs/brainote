@@ -60,7 +60,11 @@ fn read_appearance(c: &Connection) -> rusqlite::Result<Appearance> {
 /// Vidro = Acrylic do Windows 11 (desfoca o que está atrás da janela; o Mica ficou fraco demais).
 /// A variante clara/escura do Acrylic segue o tema da janela, por isso o `set_theme`.
 fn apply_appearance(w: &WebviewWindow, a: &Appearance) -> tauri::Result<()> {
-    w.set_theme(Some(if a.theme == "dark" { Theme::Dark } else { Theme::Light }))?;
+    // post-it mantém as cores claras nos dois temas, inclusive o vidro por trás dele
+    let postit = widgets::id_of(w.label())
+        .and_then(|id| background::with_db(w.app_handle(), |c| store::get_widget(c, id)))
+        .is_some_and(|wd| wd.kind == "postit");
+    w.set_theme(Some(if a.theme == "dark" && !postit { Theme::Dark } else { Theme::Light }))?;
     w.set_effects(a.glass.then(|| EffectsBuilder::new().effect(Effect::Acrylic).build()))
 }
 
@@ -208,7 +212,7 @@ fn check_reminder(r: &store::ReminderInput) -> Res<()> {
         return Err("O lembrete precisa de um título.".into());
     }
     chrono::DateTime::parse_from_rfc3339(&r.due_at).map_err(|_| "Data do lembrete inválida.")?;
-    if !["none", "daily", "weekly", "monthly"].contains(&r.repeat.as_str()) {
+    if !["none", "monthly", "yearly"].contains(&r.repeat.as_str()) && store::weekly_days(&r.repeat).is_none() {
         return Err("Repetição inválida.".into());
     }
     Ok(())

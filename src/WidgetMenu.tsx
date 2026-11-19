@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type Note, type Widget, type WidgetKind } from "./api";
 import { Dialog } from "./Dialog";
 import { Icon, paths } from "./icons";
+import { Select } from "./Select";
 
 const KINDS: { kind: WidgetKind; label: string; desc: string; icon: ReactNode }[] = [
   { kind: "postit", label: "Post-it", desc: "Uma nota sempre visível na área de trabalho", icon: paths.postit },
@@ -87,14 +88,10 @@ function NotePicker({ kind, notes, noteId, onClose }: { kind: "postit" | "checkl
   return (
     <Dialog title={kind === "postit" ? "Post-it de qual nota?" : "Checklist de qual nota?"} onClose={onClose}>
       {options.length > 0 ? (
-        <label className="fld">
+        <div className="fld">
           <span className="lbl">Nota</span>
-          <select className="inp" value={id} onChange={(e) => setId(e.target.value)}>
-            {options.map((n) => (
-              <option key={n.id} value={n.id}>{n.title.trim() || "Nova nota"}</option>
-            ))}
-          </select>
-        </label>
+          <Select label="Nota" value={id} onChange={setId} options={options.map((n) => ({ value: n.id, label: n.title.trim() || "Nova nota" }))} />
+        </div>
       ) : (
         <p className="t2" style={{ margin: 0, fontSize: 14 }}>
           {kind === "checklist" ? "Nenhuma nota com checklist ainda." : "Nenhuma nota ainda."}

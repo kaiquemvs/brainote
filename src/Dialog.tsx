@@ -12,7 +12,8 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
     first()?.focus();
     // modal de verdade: o foco não sai da janela enquanto ela estiver aberta
     const keepInside = (e: FocusEvent) => {
-      if (!ref.current?.contains(e.target as Node)) first()?.focus();
+      // listas abertas pelo formulário (data-popup) ficam fora da janela no HTML, mas fazem parte dela
+      if (!ref.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest?.("[data-popup]")) first()?.focus();
     };
     document.addEventListener("focusin", keepInside);
     return () => {
