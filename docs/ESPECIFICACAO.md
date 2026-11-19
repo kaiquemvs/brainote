@@ -439,8 +439,12 @@ Use para entender a **estrutura das telas, as classes CSS, as medidas e os compo
 - **Limpeza:** ao abrir o app, apaga as pastas de anexos com mais de um dia que nenhuma nota usa (as notas da lixeira contam como uso; a lixeira se esvazia sozinha depois de 30 dias).
 
 **Lote B — tabelas e notas com senha**
-- **Tabelas** no editor: inserir 3×3 com cabeçalho; Tab anda entre células; botão direito adiciona e remove linhas e colunas; arrastar a borda muda a largura; exportadas como tabela Markdown.
+- **Tabelas** no editor: botão "Inserir tabela" na barra (3×3 com cabeçalho); Tab anda entre células (na última, cria linha); botão direito numa célula adiciona linha acima/abaixo e coluna à esquerda/direita, remove linha ou coluna e apaga a tabela; arrastar a borda muda a largura. Exportadas como tabela Markdown no `.md` e com colunas separadas por " | " no `.txt`; no post-it, cada linha da tabela vira uma linha.
 - **Notas com senha:** uma senha só para todas as notas trancadas (como no Notas do Mac), definida na primeira vez. Conteúdo criptografado, sem recuperação se a senha for esquecida. Título visível; o conteúdo fica fora da busca, da prévia e dos widgets. Tranca de novo ao fechar a janela do brainote ou pelo botão "Trancar agora". Trocar a senha nas Configurações. **Nota trancada não aceita imagem nem anexo**, e nota com imagem ou anexo não pode ser trancada.
+  - Trancar pelo cadeado da barra do editor ou por "Trancar nota" no menu da nota; "Remover cadeado" devolve a nota ao normal. Na primeira vez o app pede a senha duas vezes e uma **dica opcional**, mostrada quando a senha é digitada errada.
+  - Nota trancada com as notas fechadas mostra só o título e o campo da senha; depois da senha, todas as notas trancadas ficam abertas até trancar de novo (ao fechar a janela, pelo cadeado "Trancar agora" ou ao abrir o app).
+  - Ao trancar, os widgets da nota saem da área de trabalho; nota trancada não pode virar widget.
+  - Criptografia no Rust (`src-tauri/src/vault.rs`): chave tirada da senha com Argon2id (64 MB, 3 passadas, sal aleatório) e conteúdo com XChaCha20-Poly1305. A senha não é guardada; a chave fica só na memória. O backup leva as notas trancadas criptografadas, com o sal e a conferência da senha (a mesma senha abre depois de importar). O banco zera o texto apagado (`secure_delete`, inclusive no índice da busca); backups feitos antes de trancar ainda têm o texto aberto.
 
 ### Versão 1.3 — agenda externa
 - Ler um calendário pelo link ICS e mostrar os compromissos na Agenda (só leitura).

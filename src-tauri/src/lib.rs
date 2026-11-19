@@ -4,6 +4,7 @@ mod background;
 mod desktop;
 mod spell;
 mod store;
+mod vault;
 mod widgets;
 
 use rusqlite::Connection;
@@ -17,6 +18,7 @@ use tauri::{AppHandle, Emitter, Manager, State, Theme, WebviewWindow, WindowEven
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::StateFlags;
+use vault::Vault;
 
 /// Argumento que o Windows passa ao abrir o app junto com o sistema.
 const AUTOSTART_ARG: &str = "--autostart";
@@ -193,6 +195,9 @@ async fn import_backup(app: AppHandle) -> Res<bool> {
     }
     widgets::reopen_all(&app);
     broadcast_appearance(&app, &with(&app.state::<Db>(), read_appearance)?)?;
+    // a senha pode ter vindo junto com o backup: as notas trancadas fecham
+    set_vault(&app, None);
+    let _ = app.emit("relock", ());
     background::changed(&app);
     Ok(true)
 }
@@ -264,7 +269,166 @@ fn create_note(app: AppHandle, db: State<Db>, folder_id: Option<&str>) -> Res<st
 fn update_note(app: AppHandle, db: State<Db>, id: &str, title: &str, content_json: &str, plain_text: &str) -> Res<()> {
     // JSON quebrado deixaria a nota impossível de abrir: recusa antes de gravar
     serde_json::from_str::<serde_json::Value>(content_json).map_err(|e| format!("Conteúdo inválido: {e}"))?;
-    write(&app, &db, |c| store::update_note(c, id, title, content_json, plain_text))
+    if with(&db, |c| store::note_body(c, id))?.2.is_none() {
+        return write(&app, &db, |c| store::update_note(c, id, title, content_json, plain_text));
+    }
+    // nota trancada: o texto aberto nunca vai para o banco
+    let key = vault_key(&app).ok_or(NO_KEY)?;
+    let body = NoteBody { content_json: Some(content_json.into()), plain_text: plain_text.into() };
+    let sealed = vault::seal(&key, &serde_json::to_vec(&body).map_err(|e| e.to_string())?);
+    write(&app, &db, |c| store::update_locked_note(c, id, title, &sealed))
+}
+
+// ---------- Notas com senha (13, versão 1.2) ----------
+
+#[derive(Serialize)]
+struct LockState {
+    has_password: bool,
+    unlocked: bool,
+    hint: Option<String>,
+}
+
+/// O conteúdo de uma nota trancada, criptografado junto.
+#[derive(Serialize, Deserialize)]
+struct NoteBody {
+    content_json: Option<String>,
+    plain_text: String,
+}
+
+const NO_KEY: &str = "As notas trancadas estão fechadas: digite a senha.";
+
+fn vault_key(app: &AppHandle) -> Option<vault::Secret> {
+    *app.state::<Vault>().0.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn set_vault(app: &AppHandle, key: Option<vault::Secret>) {
+    *app.state::<Vault>().0.lock().unwrap_or_else(|e| e.into_inner()) = key;
+}
+
+/// (sal, valor de conferência) da senha, se ela já foi criada.
+fn password_of(db: &State<Db>) -> Res<Option<(String, String)>> {
+    with(db, |c| Ok(store::get_setting(c, "lock_salt")?.zip(store::get_setting(c, "lock_check")?)))
+}
+
+/// A senha digitada confere? Devolve a chave dela.
+fn check_password(db: &State<Db>, password: &str) -> Res<Option<vault::Secret>> {
+    let (salt, check) = password_of(db)?.ok_or("Ainda não há senha.")?;
+    Ok(vault::derive(password, &salt).filter(|k| vault::verify(k, &check)))
+}
+
+/// Grava a senha nova (sal, conferência e dica). A senha em si não é guardada.
+fn save_password(c: &Connection, salt: &str, key: &vault::Secret, hint: &str) -> rusqlite::Result<()> {
+    store::set_setting(c, "lock_salt", salt)?;
+    store::set_setting(c, "lock_check", &vault::check_value(key))?;
+    store::set_setting(c, "lock_hint", hint.trim())
+}
+
+fn has_files(content_json: &str) -> bool {
+    content_json.contains(r#""type":"image""#) || content_json.contains(r#""type":"attachment""#)
+}
+
+#[tauri::command]
+fn lock_state(app: AppHandle, db: State<Db>) -> Res<LockState> {
+    let has_password = password_of(&db)?.is_some();
+    let hint = with(&db, |c| store::get_setting(c, "lock_hint"))?.filter(|h| !h.is_empty());
+    Ok(LockState { has_password, unlocked: vault_key(&app).is_some(), hint })
+}
+
+/// Primeira nota trancada: cria a senha, que já fica aberta. async: o Argon2 leva meio segundo.
+#[tauri::command]
+async fn create_password(app: AppHandle, password: String, hint: String) -> Res<()> {
+    let db = app.state::<Db>();
+    if password.is_empty() {
+        return Err("Digite uma senha.".into());
+    }
+    if password_of(&db)?.is_some() {
+        return Err("A senha das notas trancadas já existe.".into());
+    }
+    let salt = vault::new_salt();
+    let key = vault::derive(&password, &salt).ok_or("Não foi possível criar a senha.")?;
+    with(&db, |c| save_password(c, &salt, &key, &hint))?;
+    set_vault(&app, Some(key));
+    Ok(())
+}
+
+/// Destranca todas as notas trancadas; `false` = senha errada.
+#[tauri::command]
+async fn unlock_notes(app: AppHandle, password: String) -> Res<bool> {
+    let key = check_password(&app.state::<Db>(), &password)?;
+    if key.is_some() {
+        set_vault(&app, key);
+    }
+    Ok(key.is_some())
+}
+
+#[tauri::command]
+fn lock_notes(app: AppHandle) {
+    set_vault(&app, None);
+}
+
+#[tauri::command]
+fn open_locked_note(app: AppHandle, db: State<Db>, id: &str) -> Res<NoteBody> {
+    let key = vault_key(&app).ok_or(NO_KEY)?;
+    let sealed = with(&db, |c| store::note_body(c, id))?.2.ok_or("Esta nota não está trancada.")?;
+    vault::open(&key, &sealed)
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .ok_or_else(|| "Não foi possível abrir a nota.".into())
+}
+
+/// Tranca a nota: o conteúdo vai criptografado e os widgets dela saem da área de trabalho.
+/// async: fechar janela de widget num comando síncrono trava o app.
+#[tauri::command]
+async fn lock_note(app: AppHandle, id: String) -> Res<()> {
+    let key = vault_key(&app).ok_or(NO_KEY)?;
+    let db = app.state::<Db>();
+    let (content_json, plain_text, sealed) = with(&db, |c| store::note_body(c, &id))?;
+    if sealed.is_some() {
+        return Ok(());
+    }
+    if content_json.as_deref().is_some_and(has_files) {
+        return Err("Tire as imagens e os anexos da nota antes de trancá-la.".into());
+    }
+    let sealed = vault::seal(&key, &serde_json::to_vec(&NoteBody { content_json, plain_text }).map_err(|e| e.to_string())?);
+    with(&db, |c| store::set_note_body(c, &id, Some(&sealed), None, ""))?;
+    for w in with(&db, store::list_widgets)?.into_iter().filter(|w| w.note_id.as_deref() == Some(id.as_str())) {
+        widgets::remove(&app, &w.id);
+    }
+    background::changed(&app);
+    Ok(())
+}
+
+/// Tira o cadeado: a nota volta a ser comum.
+#[tauri::command]
+fn unlock_note(app: AppHandle, db: State<Db>, id: &str) -> Res<()> {
+    let body = open_locked_note(app.clone(), db.clone(), id)?;
+    write(&app, &db, |c| store::set_note_body(c, id, None, body.content_json.as_deref(), &body.plain_text))
+}
+
+/// Confere a senha atual e refaz todas as notas trancadas com a nova, numa transação só; `false` = senha atual errada.
+#[tauri::command]
+async fn change_password(app: AppHandle, current: String, new: String, hint: String) -> Res<bool> {
+    let db = app.state::<Db>();
+    if new.is_empty() {
+        return Err("Digite a nova senha.".into());
+    }
+    let Some(old) = check_password(&db, &current)? else { return Ok(false) };
+    let salt = vault::new_salt();
+    let key = vault::derive(&new, &salt).ok_or("Não foi possível criar a senha.")?;
+    let resealed = with(&db, store::locked_notes)?
+        .into_iter()
+        .map(|(id, sealed)| vault::open(&old, &sealed).map(|body| (id, vault::seal(&key, &body))))
+        .collect::<Option<Vec<_>>>()
+        .ok_or("Uma nota trancada não abriu com a senha atual; a senha não foi trocada.")?;
+    with(&db, |c| {
+        let tx = c.unchecked_transaction()?;
+        for (id, sealed) in &resealed {
+            store::set_locked_cipher(&tx, id, sealed)?;
+        }
+        save_password(&tx, &salt, &key, &hint)?;
+        tx.commit()
+    })?;
+    set_vault(&app, Some(key));
+    Ok(true)
 }
 
 #[tauri::command]
@@ -586,6 +750,7 @@ pub fn run() {
                 store::set_setting(&conn, "autostart", "1")?;
             }
             app.manage(Db(Mutex::new(conn)));
+            app.manage(Vault(Mutex::new(None))); // notas com senha começam trancadas
 
             background::tray(app.handle())?;
             widgets::restore(app.handle());
@@ -606,10 +771,28 @@ pub fn run() {
                 if let WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = window.hide();
+                    // notas com senha trancam ao fechar: a tela salva o que falta e tranca (App.tsx);
+                    // se ela não responder, tranca do mesmo jeito em 3 s
+                    let _ = window.emit("relock", ());
+                    let app = window.app_handle().clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_secs(3));
+                        if app.get_webview_window("main").is_some_and(|w| !w.is_visible().unwrap_or(true)) {
+                            set_vault(&app, None);
+                        }
+                    });
                 }
             }
         })
         .invoke_handler(tauri::generate_handler![
+            lock_state,
+            create_password,
+            unlock_notes,
+            lock_notes,
+            open_locked_note,
+            lock_note,
+            unlock_note,
+            change_password,
             attach_files,
             save_attachment,
             open_attachment,

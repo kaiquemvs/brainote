@@ -25,12 +25,14 @@ type Props = {
   /** a nota tem post-it na área de trabalho? (muda o texto do menu) */
   hasPostit: (id: string) => boolean;
   onPostit: (n: Note) => void;
+  /** trancar a nota com senha, ou tirar o cadeado */
+  onLock: (n: Note) => void;
   sideOpen: boolean;
   onToggleSide: () => void;
   openMenu: (m: MenuState) => void;
 };
 
-const preview = (n: Note) => n.plain_text.split("\n").map((s) => s.trim()).find(Boolean) ?? "Sem texto adicional";
+const preview = (n: Note) => n.locked ? "Nota trancada" : n.plain_text.split("\n").map((s) => s.trim()).find(Boolean) ?? "Sem texto adicional";
 
 export function NoteList(p: Props) {
   const now = new Date();
@@ -47,7 +49,9 @@ export function NoteList(p: Props) {
       items: [
         { label: n.pinned ? "Desafixar" : "Fixar", onSelect: () => p.onPin(n) },
         { label: "Mover para pasta…", onSelect: () => p.openMenu({ ...at, items: moveItems }) },
-        { label: p.hasPostit(n.id) ? "Remover da área de trabalho" : "Fixar na área de trabalho", onSelect: () => p.onPostit(n) },
+        // nota trancada não vai para a área de trabalho
+        ...(n.locked ? [] : [{ label: p.hasPostit(n.id) ? "Remover da área de trabalho" : "Fixar na área de trabalho", onSelect: () => p.onPostit(n) }]),
+        { label: n.locked ? "Remover cadeado" : "Trancar nota", onSelect: () => p.onLock(n) },
         { label: "Apagar", onSelect: () => p.onDelete(n.id) },
       ],
     });
@@ -107,7 +111,10 @@ export function NoteList(p: Props) {
                     e.dataTransfer.effectAllowed = "move";
                   }}
                 >
-                  <span className="row-t">{n.title.trim() || "Nova nota"}</span>
+                  <span className="row-t">
+                    {n.locked && <Icon size={13}>{paths.lock}</Icon>}
+                    {n.title.trim() || "Nova nota"}
+                  </span>
                   <span className="row-m">
                     <span className="t2" style={{ flex: "none", fontWeight: 500 }}>{rowWhen(new Date(n.updated_at), now)}</span>
                     <span className="t2 ell">{preview(n)}</span>

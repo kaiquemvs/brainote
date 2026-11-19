@@ -76,7 +76,8 @@ export function WidgetMenu({ widgets, notes, noteId, onClose }: Props) {
 
 /** Escolher a nota do post-it ou do checklist (já marcada a que está aberta). */
 function NotePicker({ kind, notes, noteId, onClose }: { kind: "postit" | "checklist"; notes: Note[]; noteId: string | null; onClose: () => void }) {
-  const options = kind === "checklist" ? notes.filter((n) => n.has_checklist) : notes;
+  const open = notes.filter((n) => !n.locked); // nota trancada não vai para a área de trabalho
+  const options = kind === "checklist" ? open.filter((n) => n.has_checklist) : open;
   const [id, setId] = useState(options.find((n) => n.id === noteId)?.id ?? options[0]?.id ?? "");
 
   const add = async () => {

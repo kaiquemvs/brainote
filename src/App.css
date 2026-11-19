@@ -374,3 +374,25 @@ button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 
 /* Busca: palavra procurada destacada na nota (searchHighlight.ts); mais forte que o marca-texto */
 .tiptap .search-hit { background: var(--accfill); color: #1C1C1E; border-radius: 3px; box-decoration-break: clone; }
+
+/* Tabelas (tables.ts) */
+.tiptap .tableWrapper { overflow-x: auto; margin: 12px 0; }
+.tiptap table { border-collapse: collapse; table-layout: fixed; width: 100%; margin: 0; }
+.tiptap td, .tiptap th { position: relative; min-width: 60px; box-sizing: border-box; padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); vertical-align: top; }
+.tiptap th { background: var(--field); font-weight: 600; text-align: left; }
+.tiptap td > p, .tiptap th > p { margin: 0; }
+.tiptap .selectedCell::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--accfill) 25%, transparent); pointer-events: none; }
+.tiptap .column-resize-handle { position: absolute; top: 0; right: -2px; bottom: -1px; width: 4px; background: var(--acc); pointer-events: none; }
+.tiptap.resize-cursor { cursor: col-resize; }
+
+/* Notas com senha (Locked.tsx) */
+.lock-screen { display: grid; justify-items: center; gap: 10px; max-width: 380px; margin: 100px auto 0; padding: 0 20px; text-align: center; }
+.lock-screen > .i { color: var(--text2); }
+.lock-t { margin: 4px 0 0; font-size: 20px; font-weight: 700; }
+.lock-screen p { margin: 0; font-size: 13px; }
+.lock-row { display: flex; gap: 8px; width: 100%; margin-top: 8px; }
+.lock-row .inp { flex: 1; min-width: 0; }
+.lock-row .btn-acc { height: 34px; }
+.dlg-err { margin: 0; font-size: 13px; color: #C5221F; }
+.t-dark .dlg-err { color: #FF8A80; }
+.row-t .i { margin-right: 5px; vertical-align: -2px; color: var(--text2); }

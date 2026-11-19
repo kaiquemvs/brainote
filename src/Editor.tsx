@@ -13,6 +13,7 @@ import { Icon, paths } from "./icons";
 import { type MenuState } from "./Menu";
 import { noteDoc as initialContent, noteFiles, noteToText } from "./noteContent";
 import { SearchHighlight, setSearch } from "./searchHighlight";
+import { TableMenu, Tables } from "./tables";
 import { Spellcheck, type SpellMenu } from "./spellcheck";
 import { WindowButtons } from "./WindowButtons";
 
@@ -22,10 +23,13 @@ const extensions = [
   TaskList,
   ChecklistItem,
   Marker,
-  Picture,
-  Files,
+  Tables,
   SearchHighlight,
 ];
+
+// Salvamentos pendentes dos editores abertos: antes de trancar, o que foi digitado vai para o banco.
+const pending = new Set<() => Promise<void>>();
+export const saveAll = () => Promise.all([...pending].map((save) => save()));
 
 type Props = {
   note: Note;
@@ -41,10 +45,15 @@ type Props = {
   openMenu: (m: MenuState) => void;
   /** texto do campo "Buscar": destacado na nota */
   search: string;
+  /** nota com senha (aberta): sem imagens, anexos nem post-it */
+  locked: boolean;
+  /** cadeado da barra: tranca a nota, ou, se ela já é trancada, tranca todas agora */
+  onLock: () => void;
 };
+export type EditorProps = Props;
 
 /** Montado com `key={note.id}`: cada nota tem o seu próprio editor. */
-export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemoveReminder, postitOn, onPostit, openMenu, search }: Props) {
+export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemoveReminder, postitOn, onPostit, openMenu, search, locked, onLock }: Props) {
   const [title, setTitle] = useState(note.title);
   const [aaOpen, setAaOpen] = useState(false);
   const [markOpen, setMarkOpen] = useState(false);
@@ -87,8 +96,12 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
   spellMenuRef.current = spellMenu;
 
   const editor = useEditor({
-    extensions: [...extensions, Spellcheck.configure({ check: api.spellCheck, fix: api.spellAutocorrect, onMenu: (m) => spellMenuRef.current(m) }),
-      Attachment.configure({ openMenu }),
+    extensions: [
+      ...extensions,
+      // nota trancada não aceita imagem nem anexo (nem colando, nem arrastando)
+      ...(locked ? [] : [Picture, Files, Attachment.configure({ openMenu })]),
+      Spellcheck.configure({ check: api.spellCheck, fix: api.spellAutocorrect, onMenu: (m) => spellMenuRef.current(m) }),
+      TableMenu.configure({ openMenu }),
     ],
     content: initialContent(note),
     // corretor do Windows desligado: ele só conhece português e marcaria as palavras em inglês
@@ -122,8 +135,10 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
   // (fechar só esconde na bandeja; clicar no "Sair" da bandeja já tira o foco antes).
   useEffect(() => {
     addEventListener("blur", flush);
+    pending.add(flush);
     return () => {
       removeEventListener("blur", flush);
+      pending.delete(flush);
       flush();
     };
   }, []);
@@ -181,17 +196,37 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
         </button>
         <button
           className="btn-ic"
-          aria-label="Inserir imagem ou arquivo"
-          title="Inserir imagem ou arquivo (ou cole com Ctrl+V, ou arraste para a nota)"
-          onClick={async () => editor && insertAttached(editor, await api.attachFiles())}
+          aria-label="Inserir tabela"
+          title="Inserir tabela (botão direito numa célula adiciona e remove linhas e colunas)"
+          onClick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
         >
-          <Icon size={18}>{paths.clip}</Icon>
+          <Icon size={18}>{paths.table}</Icon>
         </button>
+        {!locked && (
+          <button
+            className="btn-ic"
+            aria-label="Inserir imagem ou arquivo"
+            title="Inserir imagem ou arquivo (ou cole com Ctrl+V, ou arraste para a nota)"
+            onClick={async () => editor && insertAttached(editor, await api.attachFiles())}
+          >
+            <Icon size={18}>{paths.clip}</Icon>
+          </button>
+        )}
         <button className={`btn-ic${reminder ? " is-on" : ""}`} aria-label="Lembrete desta nota" aria-pressed={!!reminder} onClick={onReminder}>
           <Icon size={18}>{paths.bell}</Icon>
         </button>
-        <button className={`btn-ic${postitOn ? " is-on" : ""}`} aria-label="Fixar como post-it na área de trabalho" aria-pressed={postitOn} onClick={onPostit}>
-          <Icon size={18}>{paths.postit}</Icon>
+        {!locked && (
+          <button className={`btn-ic${postitOn ? " is-on" : ""}`} aria-label="Fixar como post-it na área de trabalho" aria-pressed={postitOn} onClick={onPostit}>
+            <Icon size={18}>{paths.postit}</Icon>
+          </button>
+        )}
+        <button
+          className={`btn-ic${locked ? " is-on" : ""}`}
+          aria-label={locked ? "Trancar agora" : "Trancar nota com senha"}
+          title={locked ? "Trancar agora (fecha todas as notas trancadas)" : "Trancar nota com senha"}
+          onClick={onLock}
+        >
+          <Icon size={18}>{paths.lock}</Icon>
         </button>
         <button
           className="btn-ic"

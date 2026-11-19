@@ -11,7 +11,12 @@ export type Note = {
   pinned: boolean;
   updated_at: string;
   has_checklist: boolean;
+  /** com senha: content_json nulo e plain_text vazio; o conteúdo só vem por openLockedNote */
+  locked: boolean;
 };
+
+/** Notas com senha: já existe senha? estão abertas agora? `hint` = dica da senha. */
+export type LockState = { has_password: boolean; unlocked: boolean; hint: string | null };
 
 export type Appearance = { theme: "light" | "dark"; glass: boolean };
 
@@ -101,5 +106,22 @@ export const api = {
   setPinned: (id: string, pinned: boolean) => call<void>("set_pinned", { id, pinned }),
   moveNote: (id: string, folderId: string | null) => call<void>("move_note", { id, folderId }),
   deleteNote: (id: string) => call<void>("delete_note", { id }),
+  lockState: () => call<LockState>("lock_state"),
+  createPassword: (password: string, hint: string) => call<void>("create_password", { password, hint }),
+  /** false = senha errada */
+  unlockNotes: (password: string) => call<boolean>("unlock_notes", { password }),
+  lockNotes: () => call<void>("lock_notes"),
+  /** sem aviso de erro: falha quando o cadeado acabou de sair ou as notas fecharam, e quem chama só recarrega */
+  openLockedNote: (id: string) => invoke<{ content_json: string | null; plain_text: string }>("open_locked_note", { id }),
+  /** recusa (com o aviso do Rust, sem "Algo deu errado") se a nota tiver imagem ou anexo */
+  lockNote: (id: string) =>
+    invoke<void>("lock_note", { id }).catch((e) => {
+      window.alert(String(e));
+      throw e;
+    }),
+  /** tira o cadeado: a nota volta a ser comum */
+  unlockNote: (id: string) => call<void>("unlock_note", { id }),
+  /** false = senha atual errada */
+  changePassword: (current: string, next: string, hint: string) => call<boolean>("change_password", { current, new: next, hint }),
   restoreNote: (id: string) => call<void>("restore_note", { id }),
 };

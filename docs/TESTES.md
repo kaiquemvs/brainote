@@ -121,6 +121,22 @@ Use esta lista a cada versão nova. Marque com `x` o que passou. Teste no **app 
 - [ ] Exportar a nota em `.md`: ao lado do arquivo aparece a pasta "<nome> - anexos" com os arquivos; abrindo o `.md` num visualizador de Markdown, a imagem aparece.
 - [ ] Configurações → **Exportar backup** salva um `.zip` (dentro: `brainote.json` e a pasta `anexos`). **Importar backup** desse `.zip` traz as notas com as imagens; um backup `.json` antigo continua sendo aceito.
 
+## Versão 1.2 — Lote B (tabelas e notas com senha)
+
+- [ ] Botão **Inserir tabela** na barra: aparece uma tabela 3×3 com a primeira linha em destaque (cabeçalho).
+- [ ] Tab e Shift+Tab andam entre as células; Tab na última célula cria uma linha nova.
+- [ ] Botão direito numa célula: adicionar linha acima/abaixo, coluna à esquerda/direita, remover linha, remover coluna e apagar tabela funcionam.
+- [ ] Arrastar a borda entre duas colunas muda a largura, e ela continua igual depois de trocar de nota.
+- [ ] Exportar a nota em `.md`: a tabela sai como tabela Markdown. No post-it, cada linha da tabela aparece como "a | b | c".
+- [ ] Cadeado na barra de uma nota comum: na primeira vez pede a senha duas vezes e a dica; depois a nota mostra o cadeado na lista e "Nota trancada" na prévia.
+- [ ] Nota com imagem ou anexo: trancar mostra o aviso para tirar os arquivos antes. Nota trancada: o clipe some e colar ou arrastar imagem não faz nada.
+- [ ] Buscar uma palavra do texto da nota trancada não encontra a nota; buscar pelo título encontra.
+- [ ] Fechar a janela (X) e abrir pela bandeja: a nota trancada pede a senha. Senha errada mostra "Senha incorreta" e a dica.
+- [ ] Com as notas abertas, o cadeado da barra ("Trancar agora") tranca na hora.
+- [ ] A nota trancada que tinha post-it: o post-it some ao trancar; "Fixar na área de trabalho" não aparece para ela.
+- [ ] Menu da nota → **Remover cadeado**: a nota volta ao normal e volta a aparecer na busca.
+- [ ] Configurações → **Trocar senha…**: com a senha atual errada avisa; com a certa, a nova senha passa a abrir as notas e a antiga não.
+
 ## Teclado e leitura
 
 - [ ] Só com **Tab** dá para chegar em todos os botões, e o botão em foco mostra um contorno.

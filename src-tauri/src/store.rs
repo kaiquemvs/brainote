@@ -82,6 +82,12 @@ CREATE TABLE events (
 -- O dia da semana sai do horário local gravado (os 19 primeiros caracteres), não do UTC.
 UPDATE reminders SET repeat = 'weekly:0,1,2,3,4,5,6' WHERE repeat = 'daily';
 UPDATE reminders SET repeat = 'weekly:' || CAST(strftime('%w', substr(due_at, 1, 19)) AS INTEGER) WHERE repeat = 'weekly';
+"#, r#"
+-- Versão 1.2: nota com senha. `locked` guarda o conteúdo criptografado (src-tauri/src/vault.rs); enquanto a nota
+-- está trancada, content_json fica nulo e plain_text vazio (fora da busca, da prévia e dos widgets).
+ALTER TABLE notes ADD COLUMN locked TEXT;
+-- o índice da busca apaga de verdade o texto antigo ao trancar (sem isso ele ficaria lá até a próxima arrumação)
+INSERT INTO notes_fts (notes_fts, rank) VALUES ('secure-delete', 1);
 "#];
 
 #[derive(Serialize)]
@@ -101,6 +107,8 @@ pub struct Note {
     pub pinned: bool,
     pub updated_at: String,
     pub has_checklist: bool,
+    /// com senha: o conteúdo só sai por `open_locked_note` (lib.rs)
+    pub locked: bool,
 }
 
 #[derive(Serialize)]
@@ -215,6 +223,8 @@ fn first_run(c: &Connection) -> Result<()> {
 
 fn prepare(conn: &mut Connection) -> Result<()> {
     conn.pragma_update(None, "foreign_keys", true)?;
+    // o que é apagado ou trocado é zerado no arquivo (ex.: o texto aberto de uma nota que acabou de ser trancada)
+    conn.pragma_update(None, "secure_delete", true)?;
     let done: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
     for (i, sql) in MIGRATIONS.iter().enumerate().skip(done as usize) {
         let tx = conn.transaction()?;
@@ -581,7 +591,7 @@ pub fn set_widget_size(c: &Connection, id: &str, width: f64, height: f64) -> Res
 
 // has_checklist: o JSON do TipTap (JSON.stringify, sem espaços) tem pelo menos um item de checklist.
 const NOTE_COLS: &str = r#"id, folder_id, title, content_json, plain_text, pinned, updated_at,
-    COALESCE(content_json LIKE '%"type":"taskItem"%', 0)"#;
+    COALESCE(content_json LIKE '%"type":"taskItem"%', 0), locked IS NOT NULL"#;
 
 fn note(r: &Row) -> Result<Note> {
     Ok(Note {
@@ -593,6 +603,7 @@ fn note(r: &Row) -> Result<Note> {
         pinned: r.get(5)?,
         updated_at: r.get(6)?,
         has_checklist: r.get(7)?,
+        locked: r.get(8)?,
     })
 }
 
@@ -628,6 +639,41 @@ pub fn update_note(c: &Connection, id: &str, title: &str, content_json: &str, pl
         "UPDATE notes SET title = ?2, content_json = ?3, plain_text = ?4, updated_at = ?5 WHERE id = ?1",
         params![id, title, content_json, plain_text, now()],
     )?;
+    Ok(())
+}
+
+/// Conteúdo da nota como está no banco: (content_json, plain_text, locked).
+pub fn note_body(c: &Connection, id: &str) -> Result<(Option<String>, String, Option<String>)> {
+    c.query_row("SELECT content_json, plain_text, locked FROM notes WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+}
+
+/// Tranca (`sealed` = conteúdo criptografado, sem texto aberto) ou destranca (`sealed` = None, com o texto de volta).
+pub fn set_note_body(c: &Connection, id: &str, sealed: Option<&str>, content_json: Option<&str>, plain_text: &str) -> Result<()> {
+    c.execute(
+        "UPDATE notes SET locked = ?2, content_json = ?3, plain_text = ?4 WHERE id = ?1",
+        params![id, sealed, content_json, plain_text],
+    )?;
+    Ok(())
+}
+
+/// Nota trancada editada: o título fica aberto, o conteúdo vai criptografado.
+pub fn update_locked_note(c: &Connection, id: &str, title: &str, sealed: &str) -> Result<()> {
+    c.execute(
+        "UPDATE notes SET title = ?2, locked = ?3, updated_at = ?4 WHERE id = ?1",
+        params![id, title, sealed, now()],
+    )?;
+    Ok(())
+}
+
+/// Todas as notas trancadas, inclusive as da lixeira (trocar a senha refaz todas).
+pub fn locked_notes(c: &Connection) -> Result<Vec<(String, String)>> {
+    c.prepare("SELECT id, locked FROM notes WHERE locked IS NOT NULL")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect()
+}
+
+pub fn set_locked_cipher(c: &Connection, id: &str, sealed: &str) -> Result<()> {
+    c.execute("UPDATE notes SET locked = ?2 WHERE id = ?1", params![id, sealed])?;
     Ok(())
 }
 
@@ -742,6 +788,24 @@ mod tests {
         assert_eq!(next_due(bissexto, "yearly", at("2031-03-01T00:00:00-03:00")).unwrap(), "2032-02-29T08:00:00-03:00");
         assert_eq!(next_due(jan31, "weekly:", at("2027-01-01T00:00:00-03:00")), None); // sem dias = não repete
         assert_eq!(next_due(jan31, "none", at("2027-01-01T00:00:00-03:00")), None);
+    }
+
+    #[test]
+    fn nota_trancada_fora_da_busca_e_da_previa() {
+        let c = db();
+        let n = create_note(&c, None).unwrap();
+        update_note(&c, &n.id, "Senhas do banco", r#"{"type":"doc"}"#, "agência 1234").unwrap();
+        assert_eq!(search_notes(&c, "agencia").unwrap(), vec![n.id.clone()]);
+        set_note_body(&c, &n.id, Some("abcd"), None, "").unwrap();
+        assert!(search_notes(&c, "agencia").unwrap().is_empty());
+        assert_eq!(search_notes(&c, "senhas").unwrap(), vec![n.id.clone()]); // o título continua na busca
+        let nota = list_notes(&c).unwrap().into_iter().find(|x| x.id == n.id).unwrap();
+        assert!(nota.locked && nota.plain_text.is_empty() && nota.content_json.is_none());
+        update_locked_note(&c, &n.id, "Senhas", "ef01").unwrap();
+        assert_eq!(locked_notes(&c).unwrap(), vec![(n.id.clone(), "ef01".to_string())]);
+        set_note_body(&c, &n.id, None, Some(r#"{"type":"doc"}"#), "agência 1234").unwrap();
+        assert_eq!(search_notes(&c, "agencia").unwrap(), vec![n.id.clone()]);
+        assert!(locked_notes(&c).unwrap().is_empty());
     }
 
     #[test]

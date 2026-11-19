@@ -83,3 +83,23 @@ test("imagens e anexos: post-it, nomes sem repetir e exportação com a pasta de
   assert.match(md, /\[📎 contrato\.pdf\]\(<\{\{ANEXOS\}\}\/contrato\.pdf>\)/);
   assert.ok(noteToText("Viagem", doc, true).includes(String.raw`[anexo: {{ANEXOS}}\contrato.pdf]`));
 });
+
+test("tabela: uma linha por linha no post-it; tabela Markdown na exportação", async () => {
+  const { noteToText } = await import("./noteContent.ts");
+  const cell = (type, text) => ({ type, content: [p(text)] });
+  const doc = {
+    type: "doc",
+    content: [
+      {
+        type: "table",
+        content: [
+          { type: "tableRow", content: [cell("tableHeader", "Item"), cell("tableHeader", "Preço")] },
+          { type: "tableRow", content: [cell("tableCell", "Monitor"), cell("tableCell", "R$ 900 | à vista")] },
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(noteLines(doc), [{ text: "Item | Preço" }, { text: "Monitor | R$ 900 | à vista" }]);
+  assert.equal(noteToText("Compras", doc, false), "# Compras\n\n| Item | Preço |\n| --- | --- |\n| Monitor | R$ 900 \\| à vista |\n");
+  assert.equal(noteToText("Compras", doc, true), "Compras\n\nItem | Preço\nMonitor | R$ 900 | à vista\n");
+});

@@ -45,6 +45,9 @@ export function noteLines(doc: JSONContent): Line[] {
       case "attachment":
         lines.push({ text: `📎 ${n.attrs?.name}` });
         return;
+      case "table":
+        n.content?.forEach((row) => lines.push({ text: (row.content ?? []).map(textOf).join(" | ") }));
+        return;
       case "orderedList":
         n.content?.forEach((c, i) => walk(c, `${(n.attrs?.start ?? 1) + i}.`));
         return;
@@ -118,6 +121,18 @@ export function noteToText(title: string, doc: JSONContent, plain: boolean): str
     if (plain) return `[${image ? "imagem" : "anexo"}: {{ANEXOS}}\\${file}]`;
     return image ? `![${n.attrs?.alt ?? ""}](<{{ANEXOS}}/${file}>)` : `[📎 ${n.attrs?.name}](<{{ANEXOS}}/${file}>)`;
   };
+  // tabela: uma linha por linha da tabela; no Markdown a primeira é o cabeçalho
+  const table = (t: JSONContent) => {
+    const rows = (t.content ?? []).map((r) =>
+      (r.content ?? []).map((cell) => {
+        const text = (cell.content ?? []).map(inline).join(" ").replace(/\s*\n\s*/g, " ");
+        return plain ? text : text.replace(/\|/g, "\\|");
+      }),
+    );
+    if (plain) return rows.map((r) => r.join(" | "));
+    const line = (r: string[]) => `| ${r.join(" | ")} |`;
+    return [line(rows[0] ?? []), line((rows[0] ?? []).map(() => "---")), ...rows.slice(1).map(line)];
+  };
   const blocks: string[] = [];
   const list = (n: JSONContent, indent: string) => {
     (n.content ?? []).forEach((item, i) => {
@@ -135,6 +150,7 @@ export function noteToText(title: string, doc: JSONContent, plain: boolean): str
     else if (n.type === "paragraph") blocks.push(inline(n), "");
     // shortcut: imagem dentro de item de lista não sai na exportação; tratar se alguém usar assim
     else if (n.type === "image" || n.type === "attachment") blocks.push(fileLine(n), "");
+    else if (n.type === "table") blocks.push(...table(n), "");
     else if (n.type?.endsWith("List")) {
       list(n, "");
       blocks.push("");

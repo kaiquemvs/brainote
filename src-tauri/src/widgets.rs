@@ -60,6 +60,9 @@ pub fn create(app: &AppHandle, kind: &str, note_id: Option<&str>) -> Result<stor
     if kind != "agenda" && note_id.is_none() {
         return Err("Escolha uma nota para o widget.".into());
     }
+    if note_id.is_some_and(|n| with_db(app, |c| store::note_body(c, n)).is_some_and(|b| b.2.is_some())) {
+        return Err("Nota trancada não pode ficar na área de trabalho.".into());
+    }
     let w = with_db(app, |c| store::create_widget(c, kind, note_id, width, height)).ok_or("Não foi possível criar o widget.")?;
     open(app, &w).map_err(|e| e.to_string())?;
     changed(app);

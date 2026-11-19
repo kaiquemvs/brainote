@@ -28,6 +28,14 @@ tauri-plugin-dialog = "2.8.4"
 spellbook = "0.4.2"
 tauri-plugin-opener = "2.7.3"
 zip = { version = "9.7.3", default-features = false, features = ["deflate"] }
+argon2 = "0.6.0"
+chacha20poly1305 = "0.11.0"
+
+# Argon2 sem otimização leva vários segundos para conferir a senha no modo de desenvolvimento
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
 
 # https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

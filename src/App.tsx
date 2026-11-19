@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type Appearance, type CalEvent, type Folder, type Note, type Reminder, type Widget } from "./api";
-import { Editor } from "./Editor";
+import { api, type Appearance, type CalEvent, type Folder, type LockState, type Note, type Reminder, type Widget } from "./api";
+import { Editor, saveAll, type EditorProps } from "./Editor";
+import { LockedEditor, LockedNote, PasswordDialog, type PasswordMode } from "./Locked";
 import { Menu, type MenuState } from "./Menu";
 import { NoteList } from "./NoteList";
 import { ReminderForm, type ReminderFormInit } from "./ReminderForm";
@@ -40,6 +41,9 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [eventForm, setEventForm] = useState<EventFormInit | null>(null);
   const [widgetMenuOpen, setWidgetMenuOpen] = useState(false);
+  const [vault, setVault] = useState<LockState>({ has_password: false, unlocked: false, hint: null });
+  const [askPassword, setAskPassword] = useState<{ mode: PasswordMode; then: () => void } | null>(null);
+  const loadVault = () => api.lockState().then(setVault);
 
   const refresh = async () => {
     const [f, n, r, w, e] = await Promise.all([api.listFolders(), api.listNotes(), api.listReminders(), api.listWidgets(), api.listEvents()]);
@@ -53,6 +57,7 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
   // Post-it da nota: o botão do editor e o menu da nota fixam ou removem.
   const postitOf = (noteId: string) => widgets.find((w) => w.kind === "postit" && w.note_id === noteId);
   const togglePostit = (n: Note) => {
+    if (n.locked) return; // nota trancada não vai para a área de trabalho
     const w = postitOf(n.id);
     if (w) api.deleteWidget(w.id);
     else api.createWidget("postit", n.id);
@@ -114,6 +119,28 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
     setDeleted(id);
   };
 
+  // Notas com senha: trancar e tirar o cadeado precisam das notas abertas. Na primeira vez cria a senha;
+  // depois, se estiverem fechadas, pede a senha. O que foi digitado é salvo antes de trancar.
+  const withVault = (then: () => void) =>
+    vault.unlocked ? then() : setAskPassword({ mode: vault.has_password ? "abrir" : "criar", then });
+  const lockNote = (n: Note) =>
+    withVault(async () => {
+      await saveAll();
+      await api.lockNote(n.id).catch(() => {}); // o aviso (ex.: nota com imagem) já apareceu
+      await refresh();
+    });
+  const removeLock = (n: Note) =>
+    withVault(async () => {
+      await saveAll();
+      await api.unlockNote(n.id);
+      await refresh();
+    });
+  const lockNow = async () => {
+    await saveAll();
+    await api.lockNotes();
+    setVault((v) => ({ ...v, unlocked: false }));
+  };
+
   const undoDelete = async () => {
     if (!deleted) return;
     await api.restoreNote(deleted);
@@ -123,9 +150,10 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
   };
 
   // Avisos do Rust: bandeja, notificação clicada, widgets e dados mudados fora desta janela.
-  const handlers = useRef({ newNote, openReminder: (_: string | null) => {}, openNote: (_: string) => {}, openAgenda: () => {} });
+  const handlers = useRef({ newNote, lockNow, openReminder: (_: string | null) => {}, openNote: (_: string) => {}, openAgenda: () => {} });
   handlers.current = {
     newNote,
+    lockNow,
     openAgenda: () => go("agenda"),
     openReminder: (id) => {
       go("reminders");
@@ -147,12 +175,30 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
         setWidgetMenuOpen(true);
       }),
       listen("open-agenda", () => handlers.current.openAgenda()),
+      // janela fechada (vai para a bandeja) ou backup importado: as notas com senha trancam
+      listen("relock", () => handlers.current.lockNow()),
       // tema e vidro trocados por fora (ex.: backup importado)
       listen<Appearance>("appearance-changed", (e) => setLook(e.payload)),
     ];
     api.getAutocorrect().then(setAutocorrect);
+    loadVault();
     return () => offs.forEach((off) => off.then((f) => f()));
   }, []);
+
+  const editorProps: EditorProps | null = selected && {
+    note: selected,
+    autoFocus: selected.id === focusId,
+    onSaved: refresh,
+    reminder: noteReminder,
+    onReminder: () => setForm(noteReminder ? { reminder: noteReminder } : { noteId: selected.id, title: selected.title }),
+    onRemoveReminder: (r) => api.deleteReminder(r.id).then(refresh),
+    postitOn: !!postitOf(selected.id),
+    onPostit: () => togglePostit(selected),
+    openMenu: setMenu,
+    search: query,
+    locked: selected.locked,
+    onLock: () => (selected.locked ? lockNow() : lockNote(selected)),
+  };
 
   return (
     <div className={`app t-${look.theme}${look.glass ? " g-on" : ""}`}>
@@ -213,26 +259,21 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
             onMove={(id, folderId) => api.moveNote(id, folderId).then(refresh)}
             hasPostit={(id) => !!postitOf(id)}
             onPostit={togglePostit}
+            onLock={(n) => (n.locked ? removeLock(n) : lockNote(n))}
             sideOpen={sideOpen}
             onToggleSide={() => setSideOpen(!sideOpen)}
             openMenu={setMenu}
           />
 
           <section className="pane edit" aria-label="Editor da nota">
-            {selected ? (
-              <Editor
-                key={selected.id}
-                note={selected}
-                autoFocus={selected.id === focusId}
-                onSaved={refresh}
-                reminder={noteReminder}
-                onReminder={() => setForm(noteReminder ? { reminder: noteReminder } : { noteId: selected.id, title: selected.title })}
-                onRemoveReminder={(r) => api.deleteReminder(r.id).then(refresh)}
-                postitOn={!!postitOf(selected.id)}
-                onPostit={() => togglePostit(selected)}
-                openMenu={setMenu}
-                search={query}
-              />
+            {selected && editorProps ? (
+              !selected.locked ? (
+                <Editor key={selected.id} {...editorProps} />
+              ) : vault.unlocked ? (
+                <LockedEditor key={selected.id} {...editorProps} onFail={loadVault} />
+              ) : (
+                <LockedNote key={selected.id} title={selected.title} hint={vault.hint} onUnlocked={loadVault} />
+              )
             ) : (
               <>
                 <div className="bar" data-tauri-drag-region>
@@ -249,7 +290,19 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
       {menu && <Menu menu={menu} onClose={() => setMenu(null)} />}
       {form && <ReminderForm init={form} notes={notes} onClose={() => setForm(null)} onSaved={refresh} />}
       {eventForm && <EventForm init={eventForm} notes={notes} onClose={() => setEventForm(null)} onSaved={refresh} />}
-      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} onVault={loadVault} />}
+      {askPassword && (
+        <PasswordDialog
+          mode={askPassword.mode}
+          hint={vault.hint}
+          onClose={() => setAskPassword(null)}
+          onDone={async () => {
+            setAskPassword(null);
+            await loadVault();
+            askPassword.then();
+          }}
+        />
+      )}
       {widgetMenuOpen && (
         <WidgetMenu widgets={widgets} notes={notes} noteId={selected?.id ?? null} onClose={() => setWidgetMenuOpen(false)} />
       )}

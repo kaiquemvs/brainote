@@ -1,20 +1,26 @@
-// Configurações (docs/ESPECIFICACAO.md, 7): iniciar com o Windows, correção automática, backup e versão.
+// Configurações (docs/ESPECIFICACAO.md, 7): iniciar com o Windows, correção automática, senha das notas
+// trancadas, backup e versão.
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
-import { api, type Autostart } from "./api";
+import { api, type Autostart, type LockState } from "./api";
 import { Dialog } from "./Dialog";
+import { saveAll } from "./Editor";
+import { PasswordDialog } from "./Locked";
 import { setAutocorrect } from "./spellcheck";
 
-export function Settings({ onClose }: { onClose: () => void }) {
+export function Settings({ onClose, onVault }: { onClose: () => void; onVault: () => void }) {
   const [auto, setAuto] = useState<Autostart | null>(null);
   const [version, setVersion] = useState("");
   const [confirmImport, setConfirmImport] = useState(false);
   const [status, setStatus] = useState("");
   const [fix, setFix] = useState(false);
+  const [lock, setLock] = useState<LockState | null>(null);
+  const [changing, setChanging] = useState(false);
 
   useEffect(() => {
     api.getAutostart().then(setAuto);
     api.getAutocorrect().then(setFix);
+    api.lockState().then(setLock);
     getVersion().then(setVersion);
   }, []);
 
@@ -40,6 +46,21 @@ export function Settings({ onClose }: { onClose: () => void }) {
     if (await api.importBackup()) setStatus("Backup importado. Uma cópia dos dados anteriores ficou guardada na pasta do brainote.");
   };
 
+  if (changing && lock)
+    return (
+      <PasswordDialog
+        mode="trocar"
+        hint={lock.hint}
+        onClose={() => setChanging(false)}
+        onDone={() => {
+          setChanging(false);
+          setStatus("Senha das notas trancadas trocada.");
+          api.lockState().then(setLock);
+          onVault();
+        }}
+      />
+    );
+
   return (
     <Dialog title="Configurações" onClose={onClose}>
       <button className="toggle-row" role="switch" aria-checked={!!auto?.enabled} disabled={!auto?.available} onClick={toggle}>
@@ -52,6 +73,14 @@ export function Settings({ onClose }: { onClose: () => void }) {
         <span className={`sw${fix ? " is-on" : ""}`}><span className="knob" /></span>
       </button>
       <p className="t2 dlg-note">Ao digitar, corrige erros comuns (acento esquecido, letra trocada) em português e inglês. Ctrl+Z desfaz a troca.</p>
+
+      {lock?.has_password && (
+        <>
+          <p className="lbl" style={{ margin: "20px 4px 8px" }}>Notas trancadas</p>
+          <button className="btn-soft" onClick={() => saveAll().then(() => setChanging(true))}>Trocar senha…</button>
+          <p className="t2 dlg-note">Uma senha só para todas as notas trancadas. Se você esquecer, não há como recuperar.</p>
+        </>
+      )}
 
       <p className="lbl" style={{ margin: "20px 4px 8px" }}>Backup</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
