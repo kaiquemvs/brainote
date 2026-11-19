@@ -11,11 +11,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use tauri::{AppHandle, Manager, WebviewWindow};
 use windows::core::w;
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
+use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowExW, GetClassNameW, GetForegroundWindow, GetMessageW, GetWindow, EVENT_SYSTEM_FOREGROUND, GW_HWNDNEXT, MSG,
-    WINEVENT_OUTOFCONTEXT,
+    FindWindowExW, GetClassNameW, GetForegroundWindow, GetMessageW, GetWindow, PostMessageW, SendMessageW, EVENT_SYSTEM_FOREGROUND,
+    GW_HWNDNEXT, MSG, WINEVENT_OUTOFCONTEXT, WM_NCACTIVATE,
 };
 
 static APP: OnceLock<AppHandle> = OnceLock::new();
@@ -65,6 +66,13 @@ fn is_below(above: HWND, widget: HWND) -> bool {
 
 extern "system" fn on_foreground(_: HWINEVENTHOOK, _: u32, hwnd: HWND, _: i32, _: i32, _: u32, _: u32) {
     let Some(app) = APP.get() else { return };
+    // O Windows às vezes desliga o "ativa" sem passar pelo aviso (ex.: ao piscar na barra de tarefas, ao
+    // bloquear a tela); a cada troca de janela ativa, as do brainote voltam a ficar com o vidro ativo.
+    for w in app.webview_windows().values() {
+        if let Ok(h) = w.hwnd() {
+            let _ = unsafe { PostMessageW(Some(h), WM_NCACTIVATE, WPARAM(1), LPARAM(0)) };
+        }
+    }
     let widgets = bottom_widgets(app);
     let hwnds: Vec<HWND> = widgets.iter().filter_map(|w| w.hwnd().ok()).collect();
 
@@ -93,6 +101,23 @@ extern "system" fn on_foreground(_: HWINEVENTHOOK, _: u32, hwnd: HWND, _: i32, _
         // outra janela ficou ativa (fim do Win+D): os widgets voltam para o fundo
         for w in &widgets {
             let _ = w.set_always_on_bottom(true);
+        }
+    }
+}
+
+/// O Windows 11 desenha o vidro (Acrylic) opaco quando outra janela está ativa. Aqui a janela sempre
+/// responde ao Windows como "ativa" (WM_NCACTIVATE) e o vidro fica igual com ou sem foco. O foco de
+/// verdade (teclado) não muda. Chamar de novo na mesma janela não instala nada a mais.
+pub fn keep_glass_active(w: &WebviewWindow) {
+    unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM, _: usize, _: usize) -> LRESULT {
+        let wp = if msg == WM_NCACTIVATE { WPARAM(1) } else { wp };
+        unsafe { DefSubclassProc(hwnd, msg, wp, lp) }
+    }
+    if let Ok(hwnd) = w.hwnd() {
+        unsafe {
+            let _ = SetWindowSubclass(hwnd, Some(proc), 1, 0);
+            // janela que ainda não recebeu foco (widget, app recém-aberto) já começa com o vidro ativo
+            SendMessageW(hwnd, WM_NCACTIVATE, Some(WPARAM(1)), Some(LPARAM(0)));
         }
     }
 }

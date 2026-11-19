@@ -73,6 +73,8 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
         </button>
         <span className={`chk-t${l.task.checked ? " is-done" : ""}`}>{l.text}</span>
       </div>
+    ) : l.image ? (
+      <img key={i} className="w-img" src={l.image} alt={l.text} />
     ) : (
       <p key={i} className="w-line">{l.text}</p>
     );

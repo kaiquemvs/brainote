@@ -354,3 +354,23 @@ button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .mk-dot.is-on { box-shadow: 0 0 0 2px var(--pop), 0 0 0 4px var(--acc); }
 .mk-dot:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
 .eraser-on .tiptap { cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'24'%20height%3D'24'%20viewBox%3D'0%200%2024%2024'%20fill%3D'none'%20stroke%3D'%231C1C1E'%20stroke-width%3D'1.6'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Cpath%20d%3D'm7%2021-4.3-4.3c-1-1-1-2.5%200-3.4l9.6-9.6c1-1%202.5-1%203.4%200l5.6%205.6c1%201%201%202.5%200%203.4L13%2021z'%20fill%3D'%23FFC9D2'%2F%3E%3Cpath%20d%3D'M22%2021H7M5%2011l9%209'%2F%3E%3C%2Fsvg%3E") 4 19, text; }
+
+/* Imagens e anexos na nota (attachments.tsx) */
+.tiptap [data-resize-container] { margin: 8px 0; }
+.tiptap img { display: block; max-width: 100%; height: auto !important; border-radius: 8px; }
+.tiptap [data-resize-handle] { width: 12px; height: 12px; border-radius: 50%; background: var(--acc); border: 2px solid var(--edit); opacity: 0; transition: opacity .15s; }
+.tiptap [data-resize-handle="bottom-right"] { transform: translate(40%, 40%); cursor: nwse-resize; }
+.tiptap [data-resize-handle="bottom-left"] { transform: translate(-40%, 40%); cursor: nesw-resize; }
+.tiptap [data-resize-container]:hover [data-resize-handle], .tiptap .ProseMirror-selectednode [data-resize-handle], .tiptap [data-resize-state="true"] [data-resize-handle] { opacity: 1; }
+.tiptap .ProseMirror-selectednode img, .tiptap img.ProseMirror-selectednode { outline: 2px solid var(--acc); outline-offset: 2px; }
+.att-wrap { margin: 6px 0; }
+.att { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 380px; padding: 10px 14px; border: 1px solid var(--sep); border-radius: 12px; background: var(--field); color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.att:hover { background: var(--hover); }
+.att:focus-visible, .ProseMirror-selectednode .att { outline: 2px solid var(--acc); outline-offset: 2px; }
+.att .i { flex: none; color: var(--acc); }
+.att-n { flex: 1; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-s { flex: none; font-size: 12px; }
+.w-img { display: block; max-width: 100%; max-height: 140px; margin: 2px 0 6px; border-radius: 6px; object-fit: contain; }
+
+/* Busca: palavra procurada destacada na nota (searchHighlight.ts); mais forte que o marca-texto */
+.tiptap .search-hit { background: var(--accfill); color: #1C1C1E; border-radius: 3px; box-decoration-break: clone; }

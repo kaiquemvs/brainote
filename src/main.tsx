@@ -16,6 +16,14 @@ document.addEventListener("contextmenu", (e) => {
   if (!(e.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) e.preventDefault();
 });
 
+// Arquivo solto fora do texto da nota: sem isto, a janela trocaria o app pelo arquivo. Dentro da nota,
+// quem recebe é o editor (src/attachments.tsx).
+for (const type of ["dragover", "drop"]) {
+  document.addEventListener(type, (e) => {
+    if ((e as DragEvent).dataTransfer?.types.includes("Files")) e.preventDefault();
+  });
+}
+
 // Janelas de widget abrem o mesmo app com "#widget=<id>" no endereço.
 const widgetId = location.hash.match(/widget=([\w-]+)/)?.[1];
 

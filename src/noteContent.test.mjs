@@ -54,3 +54,32 @@ test("exportar: Markdown com títulos, formatação, listas e checklist; texto s
   assert.equal(noteToText("Mercado", nota, false), "# Mercado\n\nTexto **forte** e <mark>marcado</mark>\n\n### Tarefas\n\n- [x] café\n- [ ] pão\n\n1. um\n");
   assert.equal(noteToText("", nota, true), "Nova nota\n\nTexto forte e marcado\n\nTarefas\n\n[x] café\n[ ] pão\n\n1. um\n");
 });
+
+test("imagens e anexos: post-it, nomes sem repetir e exportação com a pasta de anexos", async () => {
+  const { noteFiles, noteToText } = await import("./noteContent.ts");
+  const img = (id, alt) => ({ type: "image", attrs: { src: `anexo:${id}`, alt } });
+  const doc = {
+    type: "doc",
+    content: [
+      p("Fotos"),
+      img("a1", "image.png"),
+      img("a2", "image.png"), // dois prints colados com o mesmo nome
+      { type: "attachment", attrs: { id: "b1", name: "contrato.pdf", size: 2048 } },
+    ],
+  };
+  assert.deepEqual(noteLines(doc), [
+    { text: "Fotos" },
+    { text: "image.png", image: "http://anexo.localhost/a1" },
+    { text: "image.png", image: "http://anexo.localhost/a2" },
+    { text: "📎 contrato.pdf" },
+  ]);
+  assert.deepEqual(noteFiles(doc), [
+    { id: "a1", file: "image.png" },
+    { id: "a2", file: "image (2).png" },
+    { id: "b1", file: "contrato.pdf" },
+  ]);
+  const md = noteToText("Viagem", doc, false);
+  assert.match(md, /!\[image\.png\]\(<\{\{ANEXOS\}\}\/image \(2\)\.png>\)/);
+  assert.match(md, /\[📎 contrato\.pdf\]\(<\{\{ANEXOS\}\}\/contrato\.pdf>\)/);
+  assert.ok(noteToText("Viagem", doc, true).includes(String.raw`[anexo: {{ANEXOS}}\contrato.pdf]`));
+});

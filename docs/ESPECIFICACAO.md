@@ -143,7 +143,7 @@ Uma janela única, **sem a borda padrão do Windows** (`decorations: false`), co
 ### 4.3 Lista de notas (292 px)
 
 - **Barra de topo:** mostrar/esconder barra lateral, **Apagar nota** e **Nova nota**.
-- **Busca:** filtra por título e conteúdo, com SQLite FTS5.
+- **Busca:** filtra por título e conteúdo, com SQLite FTS5. Na nota aberta, as palavras buscadas ficam **destacadas** (mesma regra: começo de palavra, sem acento) e o texto rola até a primeira; o destaque some ao limpar a busca.
 - **Cabeçalho:** nome da seção ou pasta e "N notas".
 - **Grupos:**
   - **Fixadas**, **Hoje**, **Ontem**, **Últimos 7 dias**, **Últimos 30 dias**, depois um grupo por mês ("Outubro de 2026").
@@ -306,7 +306,7 @@ Também ocupa as colunas da lista e do editor.
 | `widgets` | `id`, `kind` (`postit`/`checklist`/`agenda`), `note_id`, `color`, `x`, `y`, `width`, `height`, `on_top` |
 | `settings` | `key`, `value` (tema, vidro, iniciar com Windows, estado da janela) |
 
-- **Backup:** exporta tudo para um único `.json` (escolha do local pelo diálogo de salvar). A importação faz uma cópia do banco atual antes de substituir.
+- **Backup:** exporta tudo para um único `.json` (escolha do local pelo diálogo de salvar). A importação faz uma cópia do banco atual antes de substituir. Desde a versão 1.2 é um `.zip` com o `.json` e a pasta de anexos (seção 13).
 - **Primeira abertura:** cria as pastas **Pessoal** e **Trabalho**, e uma nota de boas-vindas curta explicando checklists, lembretes e post-its.
 
 ---
@@ -338,6 +338,7 @@ Uma fase por vez. Em cada uma: plano curto → construir → rodar → me passar
 ### Fase 3 — Aparência e efeito vidro
 - Chave **Efeito vidro**: janela transparente com o **Acrylic** do Windows 11 (variante clara ou escura conforme o tema) mais os tokens translúcidos `.g-on`. O Mica foi testado e ficou fraco demais (decisão do usuário). No Windows 11 22H2 ou mais novo o Acrylic é o do próprio sistema e não trava ao arrastar; no Windows 10 ele pode ficar lento.
 - Ligar e desligar o efeito em tempo de execução, sem reiniciar.
+- O vidro continua ativo quando a janela perde o foco (o Windows o deixaria opaco ao clicar em outra janela ou na área de trabalho); vale para a janela principal e os widgets.
 - Desligado: cores opacas.
 - Tema e vidro salvos nas configurações.
 - **Pronto quando:** alterno claro/escuro e vidro, os dois combinam e a escolha continua ao reabrir.
@@ -426,9 +427,20 @@ Use para entender a **estrutura das telas, as classes CSS, as medidas e os compo
   - "Ignorar" vale até fechar o brainote (não há dicionário pessoal nesta versão).
 - **Correção automática** (Configurações, começa desligada), como a do Teams: ao digitar espaço, pontuação ou Enter depois de uma palavra errada, ela é trocada se a troca for quase certa — a 1ª sugestão do português ou do inglês que só muda acentos ou uma letra (trocada, a mais, a menos ou duas vizinhas invertidas). Palavra com maiúscula (pode ser nome) só ganha acento; empate entre os idiomas, siglas, e-mails, links e números ficam como estão. Ctrl+Z desfaz só a troca.
 
-### Versão 1.2 — conteúdo rico
-- Imagens: importar, arrastar e **colar**; guardadas como arquivos em `%APPDATA%\brainote\anexos` (o backup passa a ser `.zip`).
-- Anexos de qualquer tipo, abertos no programa padrão; tabelas; notas com senha (conteúdo criptografado; sem recuperação se a senha for esquecida; fora da busca, da prévia e dos widgets).
+### Versão 1.2 — conteúdo rico (em dois lotes)
+
+**Lote A — imagens, anexos e backup**
+- **Imagens** (PNG, JPG, GIF, WebP, BMP): pelo botão de clipe na barra do editor ("Inserir imagem ou arquivo"), arrastando do Explorador ou **colando** (Ctrl+V, inclusive print de tela, que ganha o nome "imagem <data e hora>.png"). Ocupam no máximo a largura do texto; arrastar o canto de baixo muda o tamanho sem distorcer; clicar seleciona e Delete apaga.
+- **Anexos** de qualquer outro tipo: cartão com ícone, nome e tamanho; clicar abre no programa padrão do Windows; botão direito: Abrir, Salvar como…, Remover. O brainote abre a cópia guardada por ele (o que for editado fica nessa cópia). Limite de **100 MB por arquivo**. O nome do anexo entra na busca e na prévia.
+- Os arquivos ficam em `%APPDATA%\brainote\anexos\<id>\<nome original>`; a nota guarda só o id (`anexo:<id>` nas imagens). As telas leem as imagens pelo endereço interno `http://anexo.localhost/<id>`. Colar um trecho de site não traz imagens da internet.
+- **Post-it** mostra as imagens da nota (reduzidas para caber) e os anexos como "📎 nome".
+- **Exportar** `.md`/`.txt` cria, ao lado do arquivo, a pasta "<nome> - anexos" com as imagens e anexos; o Markdown mostra as imagens e liga os anexos; o `.txt` escreve onde cada um está.
+- **Backup** passa a ser `.zip` (`brainote.json` + `anexos/`). Importar aceita o `.zip` e os `.json` antigos; os anexos atuais ficam guardados em `anexos-antes-da-importacao-<data>`, como a cópia do banco.
+- **Limpeza:** ao abrir o app, apaga as pastas de anexos com mais de um dia que nenhuma nota usa (as notas da lixeira contam como uso; a lixeira se esvazia sozinha depois de 30 dias).
+
+**Lote B — tabelas e notas com senha**
+- **Tabelas** no editor: inserir 3×3 com cabeçalho; Tab anda entre células; botão direito adiciona e remove linhas e colunas; arrastar a borda muda a largura; exportadas como tabela Markdown.
+- **Notas com senha:** uma senha só para todas as notas trancadas (como no Notas do Mac), definida na primeira vez. Conteúdo criptografado, sem recuperação se a senha for esquecida. Título visível; o conteúdo fica fora da busca, da prévia e dos widgets. Tranca de novo ao fechar a janela do brainote ou pelo botão "Trancar agora". Trocar a senha nas Configurações. **Nota trancada não aceita imagem nem anexo**, e nota com imagem ou anexo não pode ser trancada.
 
 ### Versão 1.3 — agenda externa
 - Ler um calendário pelo link ICS e mostrar os compromissos na Agenda (só leitura).

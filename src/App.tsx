@@ -231,6 +231,7 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
                 postitOn={!!postitOf(selected.id)}
                 onPostit={() => togglePostit(selected)}
                 openMenu={setMenu}
+                search={query}
               />
             ) : (
               <>

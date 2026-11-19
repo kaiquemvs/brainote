@@ -22,6 +22,8 @@ export type Reminder = ReminderInput & { id: string; done: boolean; snoozed_unti
 export type Autostart = { enabled: boolean; available: boolean };
 export type EventInput = { title: string; starts_at: string; ends_at: string | null; all_day: boolean; note_id: string | null };
 export type CalEvent = EventInput & { id: string };
+/** Arquivo guardado em %APPDATA%\brainote\anexos; `image` = aparece dentro da nota. */
+export type Attached = { id: string; name: string; size: number; image: boolean };
 export type WidgetKind ="postit" | "checklist" | "agenda";
 export type Widget = {
   id: string;
@@ -44,8 +46,19 @@ function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 }
 
 export const api = {
-  /** caminho do arquivo salvo, ou null se cancelou */
-  exportNote: (title: string, markdown: string, text: string) => call<string | null>("export_note", { title, markdown, text }),
+  /** caminho do arquivo salvo, ou null se cancelou; `files` = [id, nome na pasta exportada] */
+  exportNote: (title: string, markdown: string, text: string, files: [string, string][]) =>
+    call<string | null>("export_note", { title, markdown, text, files }),
+  /** escolhe arquivos e guarda uma cópia de cada; vazio se cancelou */
+  attachFiles: () => call<Attached[]>("attach_files"),
+  /** arquivo colado ou arrastado: vai como bytes, e o nome num cabeçalho (só aceita ASCII, por isso codificado) */
+  saveAttachment: async (file: File, name: string) =>
+    invoke<Attached>("save_attachment", new Uint8Array(await file.arrayBuffer()), { headers: { "x-name": encodeURIComponent(name) } }).catch((e) => {
+      window.alert(`Algo deu errado: ${e}`);
+      throw e;
+    }),
+  openAttachment: (id: string) => call<void>("open_attachment", { id }),
+  saveAttachmentAs: (id: string) => call<string | null>("save_attachment_as", { id }),
   spellCheck: (words: string[]) => call<boolean[]>("spell_check", { words }),
   spellSuggest: (word: string) => call<string[]>("spell_suggest", { word }),
   spellAutocorrect: (word: string) => call<string | null>("spell_autocorrect", { word }),

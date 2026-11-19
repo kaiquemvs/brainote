@@ -1,3 +1,4 @@
+mod attachments;
 mod background;
 #[cfg(windows)]
 mod desktop;
@@ -7,12 +8,14 @@ mod widgets;
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri_plugin_dialog::DialogExt;
 use tauri::window::{Effect, EffectsBuilder};
 use tauri::{AppHandle, Emitter, Manager, State, Theme, WebviewWindow, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::StateFlags;
 
 /// Argumento que o Windows passa ao abrir o app junto com o sistema.
@@ -69,7 +72,14 @@ fn apply_appearance(w: &WebviewWindow, a: &Appearance) -> tauri::Result<()> {
     // ser recriado; por isso o vidro sai antes da troca e volta depois (o mesmo que desligar e ligar à mão).
     w.set_effects(None)?;
     w.set_theme(Some(if a.theme == "dark" && !postit { Theme::Dark } else { Theme::Light }))?;
-    w.set_effects(a.glass.then(|| EffectsBuilder::new().effect(Effect::Acrylic).build()))
+    w.set_effects(a.glass.then(|| EffectsBuilder::new().effect(Effect::Acrylic).build()))?;
+    // vidro ativo também sem foco; depois da troca de tema, que desenha as janelas sem foco como inativas
+    #[cfg(windows)]
+    {
+        let win = w.clone();
+        w.run_on_main_thread(move || desktop::keep_glass_active(&win))?; // precisa ser na thread da janela
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -105,44 +115,112 @@ fn data_dir(app: &AppHandle) -> Res<PathBuf> {
     Ok(app.path().data_dir().map_err(|e| e.to_string())?.join("brainote"))
 }
 
-/// Salva tudo num .json escolhido pela pessoa. `None` = cancelou.
+/// Salva tudo num .zip escolhido pela pessoa: os dados em `brainote.json` e os anexos em `anexos/`.
+/// `None` = cancelou.
 // async: a janela "Salvar como" espera a pessoa sem travar o app
 #[tauri::command]
 async fn export_backup(app: AppHandle) -> Res<Option<String>> {
-    let name = format!("brainote-backup-{}.json", chrono::Local::now().format("%Y-%m-%d"));
-    let Some(path) = app.dialog().file().set_title("Exportar backup").add_filter("Backup do brainote", &["json"]).set_file_name(name).blocking_save_file()
+    let name = format!("brainote-backup-{}.zip", chrono::Local::now().format("%Y-%m-%d"));
+    let Some(path) = app.dialog().file().set_title("Exportar backup").add_filter("Backup do brainote", &["zip"]).set_file_name(name).blocking_save_file()
     else {
         return Ok(None);
     };
     let path = path.as_path().ok_or("Escolha uma pasta do computador.")?.to_path_buf();
     let data = with(&app.state::<Db>(), store::export_backup)?;
-    let text = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text).map_err(|e| format!("Não foi possível salvar o backup: {e}"))?;
+    let fail = |e: &dyn std::fmt::Display| format!("Não foi possível salvar o backup: {e}");
+    let file = std::fs::File::create(&path).map_err(|e| fail(&e))?;
+    let mut zip = zip::ZipWriter::new(file);
+    let packed = zip::write::SimpleFileOptions::default();
+    zip.start_file("brainote.json", packed).map_err(|e| fail(&e))?;
+    serde_json::to_writer_pretty(&mut zip, &data).map_err(|e| fail(&e))?;
+    // imagens e PDFs já vêm comprimidos: guardar como estão é mais rápido e quase não muda o tamanho
+    let stored = packed.compression_method(zip::CompressionMethod::Stored);
+    for (inside, file) in attachments::all(&app) {
+        zip.start_file(inside, stored).map_err(|e| fail(&e))?;
+        std::io::copy(&mut std::fs::File::open(&file).map_err(|e| fail(&e))?, &mut zip).map_err(|e| fail(&e))?;
+    }
+    zip.finish().map_err(|e| fail(&e))?;
     Ok(Some(path.display().to_string()))
 }
 
 /// Troca todos os dados pelos de um backup. Antes, guarda uma cópia do banco atual ao lado dele.
 /// `false` = cancelou.
+/// Aceita o .zip da versão 1.2 e o .json das versões anteriores (sem anexos).
 #[tauri::command]
 async fn import_backup(app: AppHandle) -> Res<bool> {
-    let Some(path) = app.dialog().file().set_title("Importar backup").add_filter("Backup do brainote", &["json"]).blocking_pick_file() else {
+    let Some(path) = app.dialog().file().set_title("Importar backup").add_filter("Backup do brainote", &["zip", "json"]).blocking_pick_file() else {
         return Ok(false);
     };
     let path = path.as_path().ok_or("Escolha um arquivo do computador.")?.to_path_buf();
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("Não foi possível ler o arquivo: {e}"))?;
-    let data: serde_json::Value = serde_json::from_str(&text).map_err(|_| "Este arquivo não é um backup do brainote.")?;
+    let not_backup = "Este arquivo não é um backup do brainote.";
+    let base = data_dir(&app)?;
+    // os anexos do .zip vão primeiro para uma pasta à parte; só trocam de lugar com os atuais depois
+    // que o banco foi importado sem erro
+    let incoming = base.join("anexos-importando");
+    let _ = std::fs::remove_dir_all(&incoming);
+    let is_json = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("json"));
+    let data: serde_json::Value = if is_json {
+        let text = std::fs::read_to_string(&path).map_err(|e| format!("Não foi possível ler o arquivo: {e}"))?;
+        serde_json::from_str(&text).map_err(|_| not_backup)?
+    } else {
+        unpack_backup(&path, &incoming).inspect_err(|_| {
+            let _ = std::fs::remove_dir_all(&incoming);
+        })?
+    };
+    let stamp = chrono::Local::now().format("%Y-%m-%d-%H%M%S");
     {
         let db = app.state::<Db>();
         let mut conn = db.0.lock().unwrap_or_else(|e| e.into_inner());
-        let copy = data_dir(&app)?.join(format!("brainote-antes-da-importacao-{}.db", chrono::Local::now().format("%Y-%m-%d-%H%M%S")));
-        conn.execute("VACUUM INTO ?1", [copy.to_string_lossy()])
-            .map_err(|e| format!("Não foi possível guardar a cópia do banco atual, então nada foi importado: {e}"))?;
-        store::import_backup(&mut conn, &data)?;
+        let copy = base.join(format!("brainote-antes-da-importacao-{stamp}.db"));
+        let imported = conn
+            .execute("VACUUM INTO ?1", [copy.to_string_lossy()])
+            .map_err(|e| format!("Não foi possível guardar a cópia do banco atual, então nada foi importado: {e}"))
+            .and_then(|_| store::import_backup(&mut conn, &data));
+        if let Err(e) = imported {
+            let _ = std::fs::remove_dir_all(&incoming);
+            return Err(e);
+        }
+    }
+    if !is_json {
+        // os anexos atuais ficam guardados ao lado, como a cópia do banco
+        let current = attachments::dir(&app)?;
+        if current.exists() {
+            let _ = std::fs::rename(&current, base.join(format!("anexos-antes-da-importacao-{stamp}")));
+        }
+        if incoming.exists() {
+            std::fs::rename(&incoming, &current).map_err(|e| format!("Os dados foram importados, mas os anexos não: {e}"))?;
+        }
     }
     widgets::reopen_all(&app);
     broadcast_appearance(&app, &with(&app.state::<Db>(), read_appearance)?)?;
     background::changed(&app);
     Ok(true)
+}
+
+/// Lê o .zip do backup: devolve os dados e extrai os anexos em `into`.
+fn unpack_backup(path: &Path, into: &Path) -> Res<serde_json::Value> {
+    let not_backup = || "Este arquivo não é um backup do brainote.".to_string();
+    let file = std::fs::File::open(path).map_err(|e| format!("Não foi possível ler o arquivo: {e}"))?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|_| not_backup())?;
+    let data = {
+        let mut text = String::new();
+        zip.by_name("brainote.json").map_err(|_| not_backup())?.read_to_string(&mut text).map_err(|_| not_backup())?;
+        serde_json::from_str(&text).map_err(|_| not_backup())?
+    };
+    let fail = |e: &dyn std::fmt::Display| format!("Não foi possível extrair os anexos do backup: {e}");
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).map_err(|e| fail(&e))?;
+        // enclosed_name: recusa caminhos que sairiam da pasta (ex.: "../../")
+        let Some(rel) = entry.enclosed_name() else { continue };
+        let Ok(rel) = rel.strip_prefix("anexos") else { continue };
+        if entry.is_dir() || rel.as_os_str().is_empty() {
+            continue;
+        }
+        let out = into.join(rel);
+        std::fs::create_dir_all(out.parent().unwrap_or(into)).map_err(|e| fail(&e))?;
+        std::io::copy(&mut entry, &mut std::fs::File::create(&out).map_err(|e| fail(&e))?).map_err(|e| fail(&e))?;
+    }
+    Ok(data)
 }
 
 #[tauri::command]
@@ -291,8 +369,10 @@ fn delete_event(app: AppHandle, db: State<Db>, id: &str) -> Res<()> {
 
 /// Salva a nota num .md (padrão) ou .txt escolhido pela pessoa; os dois textos vêm prontos da tela.
 /// `None` = cancelou. As notas continuam no banco: isto é só uma cópia fora do app.
+/// Imagens e anexos (`files`: id e nome no arquivo exportado) vão para a pasta "<nome> - anexos", ao lado;
+/// o texto aponta para eles pela marca `{{ANEXOS}}`, trocada aqui pelo nome dessa pasta.
 #[tauri::command]
-async fn export_note(app: AppHandle, title: String, markdown: String, text: String) -> Res<Option<String>> {
+async fn export_note(app: AppHandle, title: String, markdown: String, text: String, files: Vec<(String, String)>) -> Res<Option<String>> {
     let name: String = title.chars().filter(|c| !r#"<>:"/|?*"#.contains(*c) && !c.is_control()).collect();
     let name = if name.trim().is_empty() { "nota".to_string() } else { name.trim().to_string() };
     let Some(path) = app.dialog().file().set_title("Exportar nota").add_filter("Markdown", &["md"]).add_filter("Texto", &["txt"]).set_file_name(name).blocking_save_file()
@@ -304,7 +384,70 @@ async fn export_note(app: AppHandle, title: String, markdown: String, text: Stri
         path.set_extension("md");
     }
     let txt = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("txt"));
-    std::fs::write(&path, if txt { text } else { markdown }).map_err(|e| format!("Não foi possível salvar a nota: {e}"))?;
+    let folder = format!("{} - anexos", path.file_stem().unwrap_or_default().to_string_lossy());
+    if !files.is_empty() {
+        let out = path.with_file_name(&folder);
+        std::fs::create_dir_all(&out).map_err(|e| format!("Não foi possível criar a pasta dos anexos: {e}"))?;
+        for (id, name) in &files {
+            let Some(src) = attachments::file_of(&app, id) else { continue }; // arquivo sumiu: a nota sai sem ele
+            std::fs::copy(src, out.join(attachments::clean_name(name))).map_err(|e| format!("Não foi possível copiar \"{name}\": {e}"))?;
+        }
+    }
+    let body = if txt { text } else { markdown }.replace("{{ANEXOS}}", &folder);
+    std::fs::write(&path, body).map_err(|e| format!("Não foi possível salvar a nota: {e}"))?;
+    Ok(Some(path.display().to_string()))
+}
+
+// ---------- Imagens e anexos (versão 1.2) ----------
+
+/// "Inserir imagem ou arquivo": escolhe um ou mais arquivos e guarda uma cópia de cada. Vazio = cancelou.
+#[tauri::command]
+async fn attach_files(app: AppHandle) -> Res<Vec<attachments::Attached>> {
+    let Some(picked) = app.dialog().file().set_title("Inserir imagem ou arquivo").blocking_pick_files() else {
+        return Ok(vec![]);
+    };
+    let paths: Vec<PathBuf> = picked.iter().filter_map(|p| p.as_path().map(Path::to_path_buf)).collect();
+    for p in &paths {
+        attachments::check(p)?; // se um passar do limite, nenhum é guardado
+    }
+    paths.iter().map(|p| attachments::store_copy(&app, p)).collect()
+}
+
+/// Imagem ou arquivo colado ou arrastado para a nota: o conteúdo vem no corpo da chamada e o nome no
+/// cabeçalho "x-name", codificado como em endereço web (cabeçalho só aceita letras sem acento).
+#[tauri::command]
+async fn save_attachment(app: AppHandle, request: tauri::ipc::Request<'_>) -> Res<attachments::Attached> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("Arquivo inválido.".into());
+    };
+    // o Url já sabe decodificar "%C3%A7" de volta para "ç"
+    let name = request
+        .headers()
+        .get("x-name")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| tauri::Url::parse(&format!("http://n/?n={v}")).ok())
+        .and_then(|u| u.query_pairs().next().map(|(_, v)| v.into_owned()))
+        .unwrap_or_else(|| "arquivo".into());
+    attachments::store_bytes(&app, &name, bytes)
+}
+
+/// Abre o anexo no programa padrão do Windows (a cópia guardada pelo brainote).
+#[tauri::command]
+async fn open_attachment(app: AppHandle, id: String) -> Res<()> {
+    let path = attachments::file_of(&app, &id).ok_or("O arquivo deste anexo não foi encontrado.")?;
+    app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(|e| format!("Não foi possível abrir o arquivo: {e}"))
+}
+
+/// "Salvar como…" de um anexo. `None` = cancelou.
+#[tauri::command]
+async fn save_attachment_as(app: AppHandle, id: String) -> Res<Option<String>> {
+    let src = attachments::file_of(&app, &id).ok_or("O arquivo deste anexo não foi encontrado.")?;
+    let name = src.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let Some(path) = app.dialog().file().set_title("Salvar anexo").set_file_name(name).blocking_save_file() else {
+        return Ok(None);
+    };
+    let path = path.as_path().ok_or("Escolha uma pasta do computador.")?.to_path_buf();
+    std::fs::copy(&src, &path).map_err(|e| format!("Não foi possível salvar o arquivo: {e}"))?;
     Ok(Some(path.display().to_string()))
 }
 
@@ -411,6 +554,13 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| background::show_main(app)))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec![AUTOSTART_ARG])))
         .plugin(tauri_plugin_dialog::init()) // janelas "Salvar como" e "Abrir" do backup
+        .plugin(tauri_plugin_opener::init()) // abrir anexos no programa padrão (só pelo Rust)
+        // imagens das notas: http://anexo.localhost/<id> lê de %APPDATA%\brainote\anexos
+        .register_asynchronous_uri_scheme_protocol("anexo", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_string();
+            std::thread::spawn(move || responder.respond(attachments::serve(&app, &path)));
+        })
         // guarda posição e tamanho da janela principal; quem decide se ela aparece é o setup (bandeja).
         // Os widgets guardam o lugar deles no banco.
         .plugin(
@@ -424,6 +574,7 @@ pub fn run() {
             let dir = app.path().data_dir()?.join("brainote");
             std::fs::create_dir_all(&dir)?;
             let conn = store::open(&dir.join("brainote.db"))?;
+            attachments::cleanup(app.handle(), &conn);
             let main = app.get_webview_window("main").expect("janela principal");
             // aplica o vidro antes da primeira pintura, para a janela já abrir com a aparência salva
             if let Err(e) = apply_appearance(&main, &read_appearance(&conn)?) {
@@ -459,6 +610,10 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            attach_files,
+            save_attachment,
+            open_attachment,
+            save_attachment_as,
             spell_check,
             spell_suggest,
             spell_autocorrect,
@@ -502,4 +657,34 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    /// O backup .zip devolve os dados e extrai só o que está em "anexos/", sem sair da pasta.
+    #[test]
+    fn backup_zip() {
+        let tmp = std::env::temp_dir().join(format!("brainote-teste-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let path = tmp.join("backup.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let opts = zip::write::SimpleFileOptions::default();
+        zip.start_file("brainote.json", opts).unwrap();
+        zip.write_all(br#"{"app":"brainote"}"#).unwrap();
+        zip.start_file("anexos/0f8fad5b-d9cb-469f-a165-70867728950e/foto.png", opts).unwrap();
+        zip.write_all(b"png").unwrap();
+        zip.start_file("../fora.txt", opts).unwrap(); // arquivo malicioso tentando sair da pasta
+        zip.write_all(b"x").unwrap();
+        zip.finish().unwrap();
+
+        let into = tmp.join("anexos-importando");
+        let data = super::unpack_backup(&path, &into).unwrap();
+        assert_eq!(data["app"], "brainote");
+        assert_eq!(std::fs::read(into.join("0f8fad5b-d9cb-469f-a165-70867728950e").join("foto.png")).unwrap(), b"png");
+        assert!(!tmp.join("fora.txt").exists() && !std::env::temp_dir().join("fora.txt").exists());
+        assert!(super::unpack_backup(&tmp.join("nao-existe.zip"), &into).is_err());
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
 }

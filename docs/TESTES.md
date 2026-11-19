@@ -22,6 +22,7 @@ Use esta lista a cada versão nova. Marque com `x` o que passou. Teste no **app 
 - [ ] Não diminui abaixo de 900×600.
 - [ ] **Claro/Escuro** e **Efeito vidro** mudam na hora; as 4 combinações ficam legíveis.
 - [ ] Com o vidro ligado, o que está atrás da janela aparece desfocado.
+- [ ] Com o vidro ligado, clicar em outra janela (no mesmo monitor ou no outro) ou na área de trabalho: o brainote continua com o vidro, sem ficar opaco.
 - [ ] Fechar e abrir de novo mantém tema, vidro, posição e tamanho.
 
 ## Notas e pastas (Fase 1)
@@ -33,6 +34,7 @@ Use esta lista a cada versão nova. Marque com `x` o que passou. Teste no **app 
 - [ ] Botão direito na nota: Fixar/Desafixar, Mover para pasta…, Fixar na área de trabalho, Apagar.
 - [ ] Apagar mostra "Nota apagada · Desfazer" por 6 segundos, e Desfazer traz a nota de volta.
 - [ ] A busca acha sem acento e por pedaço de palavra ("reuniao", "orcam"); Esc limpa.
+- [ ] Na nota aberta pela busca, a palavra procurada aparece destacada em amarelo forte e o texto rola até ela; limpar a busca tira o destaque.
 - [ ] O texto salva sozinho; fechar e abrir o app mantém tudo.
 
 ## Editor e checklist (Fase 2)
@@ -105,6 +107,19 @@ Use esta lista a cada versão nova. Marque com `x` o que passou. Teste no **app 
 - [ ] Botão direito numa palavra sublinhada mostra sugestões e **Ignorar**; escolher uma sugestão troca a palavra.
 - [ ] Configurações → **Correção automática** ligada: digitar "voce nao recieve excecao " vira "você não receive exceção "; Ctrl+Z logo depois desfaz só a última troca. Desligada, nada é trocado.
 - [ ] Com **Efeito vidro** ligado, trocar entre Claro e Escuro várias vezes: o vidro continua translúcido, sem precisar desligar e ligar.
+
+## Versão 1.2 — Lote A (imagens, anexos e backup)
+
+- [ ] Clipe na barra do editor → escolher uma foto: ela aparece na nota. Escolher um PDF: aparece um cartão com nome e tamanho.
+- [ ] **Win+Shift+S** (print de uma parte da tela) e **Ctrl+V** na nota: o print aparece.
+- [ ] Arrastar uma imagem e um arquivo do Explorador para dentro da nota: entram onde foram soltos.
+- [ ] Soltar um arquivo **fora** do texto (na lista ou na barra lateral): nada acontece, o app continua normal.
+- [ ] Clicar na imagem e arrastar a bolinha do canto: o tamanho muda sem distorcer e fica salvo depois de trocar de nota.
+- [ ] Clicar no cartão do anexo abre no programa padrão; botão direito: **Abrir**, **Salvar como…** e **Remover** funcionam.
+- [ ] Buscar pelo nome do anexo encontra a nota; a prévia na lista mostra "📎 nome" quando a nota começa pelo anexo.
+- [ ] Fixar a nota como post-it: a imagem aparece reduzida e o anexo como "📎 nome".
+- [ ] Exportar a nota em `.md`: ao lado do arquivo aparece a pasta "<nome> - anexos" com os arquivos; abrindo o `.md` num visualizador de Markdown, a imagem aparece.
+- [ ] Configurações → **Exportar backup** salva um `.zip` (dentro: `brainote.json` e a pasta `anexos`). **Importar backup** desse `.zip` traz as notas com as imagens; um backup `.json` antigo continua sendo aceito.
 
 ## Teclado e leitura
 

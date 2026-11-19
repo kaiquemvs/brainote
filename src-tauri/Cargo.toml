@@ -1,6 +1,6 @@
 [package]
 name = "brainote"
-version = "1.1.0"
+version = "1.2.0"
 description = "brainote"
 authors = []
 edition = "2024"
@@ -26,6 +26,8 @@ tauri-plugin-single-instance = "2.5.5"
 tauri-plugin-autostart = "2.7.0"
 tauri-plugin-dialog = "2.8.4"
 spellbook = "0.4.2"
+tauri-plugin-opener = "2.7.3"
+zip = { version = "9.7.3", default-features = false, features = ["deflate"] }
 
 # https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
@@ -36,4 +38,4 @@ panic = "abort"
 strip = true
 
 [target."cfg(windows)".dependencies]
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_Accessibility", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_Accessibility", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

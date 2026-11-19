@@ -8,9 +8,11 @@ import { api, type Note, type Reminder } from "./api";
 import { ChecklistItem } from "./checklist";
 import { editorDate, reminderWhen } from "./dates";
 import { Marker, MARKER_COLORS, type MarkerColor } from "./highlight";
+import { Attachment, Files, insertAttached, Picture } from "./attachments";
 import { Icon, paths } from "./icons";
 import { type MenuState } from "./Menu";
-import { noteDoc as initialContent, noteToText } from "./noteContent";
+import { noteDoc as initialContent, noteFiles, noteToText } from "./noteContent";
+import { SearchHighlight, setSearch } from "./searchHighlight";
 import { Spellcheck, type SpellMenu } from "./spellcheck";
 import { WindowButtons } from "./WindowButtons";
 
@@ -20,6 +22,9 @@ const extensions = [
   TaskList,
   ChecklistItem,
   Marker,
+  Picture,
+  Files,
+  SearchHighlight,
 ];
 
 type Props = {
@@ -34,10 +39,12 @@ type Props = {
   postitOn: boolean;
   onPostit: () => void;
   openMenu: (m: MenuState) => void;
+  /** texto do campo "Buscar": destacado na nota */
+  search: string;
 };
 
 /** Montado com `key={note.id}`: cada nota tem o seu próprio editor. */
-export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemoveReminder, postitOn, onPostit, openMenu }: Props) {
+export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemoveReminder, postitOn, onPostit, openMenu, search }: Props) {
   const [title, setTitle] = useState(note.title);
   const [aaOpen, setAaOpen] = useState(false);
   const [markOpen, setMarkOpen] = useState(false);
@@ -80,7 +87,9 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
   spellMenuRef.current = spellMenu;
 
   const editor = useEditor({
-    extensions: [...extensions, Spellcheck.configure({ check: api.spellCheck, fix: api.spellAutocorrect, onMenu: (m) => spellMenuRef.current(m) })],
+    extensions: [...extensions, Spellcheck.configure({ check: api.spellCheck, fix: api.spellAutocorrect, onMenu: (m) => spellMenuRef.current(m) }),
+      Attachment.configure({ openMenu }),
+    ],
     content: initialContent(note),
     // corretor do Windows desligado: ele só conhece português e marcaria as palavras em inglês
     editorProps: { attributes: { "aria-label": "Texto da nota", spellcheck: "false" } },
@@ -91,6 +100,10 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
       schedule();
     },
   });
+
+  useEffect(() => {
+    if (editor) setSearch(editor.view, search);
+  }, [editor, search]);
 
   // Não usa o atributo autoFocus: a nota nova pode já estar aberta quando o pedido de foco chega.
   useEffect(() => {
@@ -166,6 +179,14 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
         >
           <Icon size={18}>{paths.marker}</Icon>
         </button>
+        <button
+          className="btn-ic"
+          aria-label="Inserir imagem ou arquivo"
+          title="Inserir imagem ou arquivo (ou cole com Ctrl+V, ou arraste para a nota)"
+          onClick={async () => editor && insertAttached(editor, await api.attachFiles())}
+        >
+          <Icon size={18}>{paths.clip}</Icon>
+        </button>
         <button className={`btn-ic${reminder ? " is-on" : ""}`} aria-label="Lembrete desta nota" aria-pressed={!!reminder} onClick={onReminder}>
           <Icon size={18}>{paths.bell}</Icon>
         </button>
@@ -178,7 +199,8 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
           title="Exportar nota"
           onClick={() => {
             const doc = editor?.getJSON() ?? initialContent(note);
-            api.exportNote(title, noteToText(title, doc, false), noteToText(title, doc, true));
+            const files = noteFiles(doc).map((f): [string, string] => [f.id, f.file]);
+            api.exportNote(title, noteToText(title, doc, false), noteToText(title, doc, true), files);
           }}
         >
           <Icon size={18}>{paths.download}</Icon>
