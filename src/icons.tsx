@@ -21,7 +21,10 @@ export const paths = {
   check: <path d="M6 12.5l4 4 8-8.5" />,
   postit: <path d="M5 4h14a1 1 0 0 1 1 1v9.5L14.5 20H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM14 20v-4.5a1 1 0 0 1 1-1h5" />,
   widgets: <><rect x="3.5" y="3.5" width="7" height="7" rx="2" /><rect x="13.5" y="3.5" width="7" height="7" rx="2" /><rect x="3.5" y="13.5" width="7" height="7" rx="2" /><path d="M17 14v6M14 17h6" /></>,
-  clock:<><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
+  // marca-texto da Lucide (licença ISC)
+  marker: <path d="m9 11-6 6v3h9l3-3M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />,
+  download: <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />,
+  clock: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   x: <path d="M7 7l10 10M17 7L7 17" />,
   chevron: <path d="M9 6l6 6-6 6" />,

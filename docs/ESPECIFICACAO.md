@@ -420,8 +420,11 @@ Use para entender a **estrutura das telas, as classes CSS, as medidas e os compo
 **Lote B — edição**
 - **Exportar nota** em `.md` (padrão: mantém títulos, listas, checklists e negrito) ou `.txt`, por um ícone discreto na barra do editor ("Salvar como"). As notas já ficam salvas no banco; isto é uma cópia fora do app.
 - **Arrastar notas** da lista e soltar numa pasta da barra lateral (move a nota).
-- **Marca-texto:** tons pastel de azul, amarelo, verde, vermelho e laranja (versões ajustadas no tema escuro). Selecionar o texto e escolher a cor, ou ligar o **modo caneta**: cada trecho arrastado fica marcado até desligar.
+- **Marca-texto:** tons pastel de azul, amarelo, verde, vermelho e laranja (versões ajustadas no tema escuro). Selecionar o texto e escolher a cor, ou ligar o **modo caneta**: cada trecho arrastado fica marcado até desligar. Para tirar a cor, a **borracha** funciona do mesmo jeito: ligada, cada trecho arrastado perde a marca. Esc desliga a caneta e a borracha.
 - **Corretor ortográfico** de português do Brasil e inglês, com sugestões no botão direito da palavra errada.
+  - O corretor do próprio WebView2 só usa o idioma do Windows, então o brainote traz dicionários Hunspell (pt-BR e en-US, licenças em `src-tauri/dicionarios/`) dentro do app e confere as palavras no Rust (crate `spellbook`), sem internet. Uma palavra conta como certa se existir em qualquer um dos dois idiomas.
+  - "Ignorar" vale até fechar o brainote (não há dicionário pessoal nesta versão).
+- **Correção automática** (Configurações, começa desligada), como a do Teams: ao digitar espaço, pontuação ou Enter depois de uma palavra errada, ela é trocada se a troca for quase certa — a 1ª sugestão do português ou do inglês que só muda acentos ou uma letra (trocada, a mais, a menos ou duas vizinhas invertidas). Palavra com maiúscula (pode ser nome) só ganha acento; empate entre os idiomas, siglas, e-mails, links e números ficam como estão. Ctrl+Z desfaz só a troca.
 
 ### Versão 1.2 — conteúdo rico
 - Imagens: importar, arrastar e **colar**; guardadas como arquivos em `%APPDATA%\brainote\anexos` (o backup passa a ser `.zip`).

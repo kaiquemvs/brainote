@@ -7,8 +7,11 @@ import { TaskList } from "@tiptap/extension-list";
 import { api, type Note, type Reminder } from "./api";
 import { ChecklistItem } from "./checklist";
 import { editorDate, reminderWhen } from "./dates";
+import { Marker, MARKER_COLORS, type MarkerColor } from "./highlight";
 import { Icon, paths } from "./icons";
-import { noteDoc as initialContent } from "./noteContent";
+import { type MenuState } from "./Menu";
+import { noteDoc as initialContent, noteToText } from "./noteContent";
+import { Spellcheck, type SpellMenu } from "./spellcheck";
 import { WindowButtons } from "./WindowButtons";
 
 const extensions = [
@@ -16,6 +19,7 @@ const extensions = [
   StarterKit.configure({ heading: { levels: [2, 3] }, link: false, code: false, codeBlock: false, blockquote: false, horizontalRule: false }),
   TaskList,
   ChecklistItem,
+  Marker,
 ];
 
 type Props = {
@@ -29,12 +33,17 @@ type Props = {
   /** a nota já tem post-it na área de trabalho */
   postitOn: boolean;
   onPostit: () => void;
+  openMenu: (m: MenuState) => void;
 };
 
 /** Montado com `key={note.id}`: cada nota tem o seu próprio editor. */
-export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemoveReminder, postitOn, onPostit }: Props) {
+export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemoveReminder, postitOn, onPostit, openMenu }: Props) {
   const [title, setTitle] = useState(note.title);
   const [aaOpen, setAaOpen] = useState(false);
+  const [markOpen, setMarkOpen] = useState(false);
+  const [markColor, setMarkColor] = useState<MarkerColor>("amarelo");
+  // caneta: cada trecho arrastado fica marcado; borracha: cada trecho arrastado perde a marca
+  const [tool, setTool] = useState<MarkTool>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   // Última versão de tudo, em refs: o salvamento também roda depois que o editor já foi desmontado.
   const latest = useRef({ title: note.title, json: JSON.stringify(initialContent(note)), text: note.plain_text });
@@ -61,10 +70,20 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
     timer.current = window.setTimeout(flush, 500);
   };
 
+  // Botão direito numa palavra errada: sugestões do corretor no menu do app.
+  const spellMenu = async (m: SpellMenu) => {
+    const words = await api.spellSuggest(m.word);
+    const items = words.length ? words.map((w) => ({ label: w, onSelect: () => m.replace(w) })) : [{ label: "Sem sugestões", onSelect: () => {} }];
+    openMenu({ x: m.x, y: m.y, items: [...items, { label: "Ignorar", onSelect: m.ignore }] });
+  };
+  const spellMenuRef = useRef(spellMenu);
+  spellMenuRef.current = spellMenu;
+
   const editor = useEditor({
-    extensions,
+    extensions: [...extensions, Spellcheck.configure({ check: api.spellCheck, fix: api.spellAutocorrect, onMenu: (m) => spellMenuRef.current(m) })],
     content: initialContent(note),
-    editorProps: { attributes: { "aria-label": "Texto da nota" } },
+    // corretor do Windows desligado: ele só conhece português e marcaria as palavras em inglês
+    editorProps: { attributes: { "aria-label": "Texto da nota", spellcheck: "false" } },
     onUpdate: ({ editor }) => {
       // listas geram separadores em dobro: uma linha por bloco basta para busca e prévia
       const text = editor.getText({ blockSeparator: "\n" }).replace(/\n+/g, "\n").trim();
@@ -96,6 +115,26 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
     };
   }, []);
 
+  // Caneta e borracha: ao soltar o mouse depois de arrastar sobre o texto, o trecho ganha ou perde a cor; Esc desliga.
+  useEffect(() => {
+    if (!editor || !tool) return;
+    const onUp = () =>
+      setTimeout(() => {
+        // espera o editor terminar de ler a seleção feita pelo mouse
+        const { to, empty } = editor.state.selection;
+        if (empty) return;
+        const c = editor.chain();
+        (tool === "caneta" ? c.setHighlight({ color: markColor }) : c.unsetHighlight()).setTextSelection(to).run();
+      });
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setTool(null);
+    editor.view.dom.addEventListener("mouseup", onUp);
+    addEventListener("keydown", onKey);
+    return () => {
+      editor.view.dom.removeEventListener("mouseup", onUp);
+      removeEventListener("keydown", onKey);
+    };
+  }, [editor, tool, markColor]);
+
   const taskOn = useEditorState({ editor, selector: ({ editor: e }) => e?.isActive("taskList") ?? false });
 
   return (
@@ -118,14 +157,47 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
         >
           <Icon size={18}>{paths.checklist}</Icon>
         </button>
+        <button
+          className={`btn-ic${markOpen || tool ? " is-on" : ""}`}
+          data-mk
+          aria-label={tool ? `Marca-texto (${tool} ligada)` : "Marca-texto"}
+          aria-expanded={markOpen}
+          onClick={() => setMarkOpen(!markOpen)}
+        >
+          <Icon size={18}>{paths.marker}</Icon>
+        </button>
         <button className={`btn-ic${reminder ? " is-on" : ""}`} aria-label="Lembrete desta nota" aria-pressed={!!reminder} onClick={onReminder}>
           <Icon size={18}>{paths.bell}</Icon>
         </button>
         <button className={`btn-ic${postitOn ? " is-on" : ""}`} aria-label="Fixar como post-it na área de trabalho" aria-pressed={postitOn} onClick={onPostit}>
           <Icon size={18}>{paths.postit}</Icon>
         </button>
+        <button
+          className="btn-ic"
+          aria-label="Exportar nota (.md ou .txt)"
+          title="Exportar nota"
+          onClick={() => {
+            const doc = editor?.getJSON() ?? initialContent(note);
+            api.exportNote(title, noteToText(title, doc, false), noteToText(title, doc, true));
+          }}
+        >
+          <Icon size={18}>{paths.download}</Icon>
+        </button>
         <span className="grow" data-tauri-drag-region />
         <WindowButtons />
+        {markOpen && editor && (
+          <MarkPanel
+            editor={editor}
+            color={markColor}
+            tool={tool}
+            onColor={setMarkColor}
+            onTool={(t) => {
+              setTool(t);
+              if (t) setMarkOpen(false); // ferramenta ligada: o painel sai da frente para você arrastar
+            }}
+            onClose={() => setMarkOpen(false)}
+          />
+        )}
         {aaOpen && editor && (
           <FormatPanel
             editor={editor}
@@ -138,7 +210,7 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
       </div>
 
       <div className="pane-scroll" style={{ padding: "4px clamp(20px, 6%, 64px) 40px" }}>
-        <div style={{ maxWidth: 680, margin: "0 auto" }}>
+        <div style={{ maxWidth: 680, margin: "0 auto" }} className={tool === "caneta" ? `pen-${markColor}` : tool === "borracha" ? "eraser-on" : undefined}>
           <p className="t2" style={{ margin: "0 0 18px", fontSize: 12, textAlign: "center" }}>{editorDate(new Date(note.updated_at))}</p>
           {reminder && (
             <p style={{ margin: "0 0 16px" }}>
@@ -158,6 +230,7 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
             id="titulo"
             ref={titleRef}
             className="title-in"
+            spellCheck={false}
             placeholder="Título"
             value={title}
             onChange={(e) => {
@@ -241,6 +314,67 @@ function FormatPanel({ editor, onClose }: { editor: TipTap; onClose: () => void 
         {btn("Lista com marcadores", on.bullet, (c) => c.toggleBulletList(), "• Marcadores")}
         {btn("Lista numerada", on.ordered, (c) => c.toggleOrderedList(), "1. Numerada")}
       </div>
+    </div>
+  );
+}
+
+type MarkTool = "caneta" | "borracha" | null;
+
+/** Marca-texto: cores, caneta e borracha. Com texto selecionado, clicar na cor já marca o trecho. */
+function MarkPanel(p: {
+  editor: TipTap;
+  color: MarkerColor;
+  tool: MarkTool;
+  onColor: (c: MarkerColor) => void;
+  onTool: (t: MarkTool) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.querySelector("button")?.focus();
+    const outside = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!ref.current?.contains(t) && !t.closest("[data-mk]")) p.onClose();
+    };
+    addEventListener("mousedown", outside);
+    return () => removeEventListener("mousedown", outside);
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className="fmt"
+      style={{ left: 84, width: 250 }}
+      role="dialog"
+      aria-label="Marca-texto"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          p.onClose();
+        }
+      }}
+    >
+      <div className="mk-colors">
+        {MARKER_COLORS.map(([c, name]) => (
+          <button
+            key={c}
+            className={`mk-dot${c === p.color ? " is-on" : ""}`}
+            data-color={c}
+            aria-label={`Marca-texto ${name.toLowerCase()}`}
+            aria-pressed={c === p.color}
+            onClick={() => {
+              p.onColor(c);
+              if (!p.editor.state.selection.empty) p.editor.chain().setHighlight({ color: c }).run();
+            }}
+          />
+        ))}
+      </div>
+      {(["caneta", "borracha"] as const).map((t) => (
+        <button key={t} className="toggle-row" role="switch" aria-checked={p.tool === t} onClick={() => p.onTool(p.tool === t ? null : t)}>
+          <span>{t === "caneta" ? "Modo caneta" : "Borracha"}</span>
+          <span className={`sw${p.tool === t ? " is-on" : ""}`}><span className="knob" /></span>
+        </button>
+      ))}
     </div>
   );
 }

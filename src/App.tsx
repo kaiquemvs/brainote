@@ -7,6 +7,7 @@ import { NoteList } from "./NoteList";
 import { ReminderForm, type ReminderFormInit } from "./ReminderForm";
 import { Reminders } from "./Reminders";
 import { Settings } from "./Settings";
+import { setAutocorrect } from "./spellcheck";
 import { Sidebar, SHORTCUTS } from "./Sidebar";
 import { WidgetMenu } from "./WidgetMenu";
 import { WindowButtons } from "./WindowButtons";
@@ -149,6 +150,7 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
       // tema e vidro trocados por fora (ex.: backup importado)
       listen<Appearance>("appearance-changed", (e) => setLook(e.payload)),
     ];
+    api.getAutocorrect().then(setAutocorrect);
     return () => offs.forEach((off) => off.then((f) => f()));
   }, []);
 
@@ -228,6 +230,7 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
                 onRemoveReminder={(r) => api.deleteReminder(r.id).then(refresh)}
                 postitOn={!!postitOf(selected.id)}
                 onPostit={() => togglePostit(selected)}
+                openMenu={setMenu}
               />
             ) : (
               <>

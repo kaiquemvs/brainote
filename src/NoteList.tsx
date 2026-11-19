@@ -5,6 +5,9 @@ import { groupNotes, rowWhen } from "./dates";
 import { Icon, paths } from "./icons";
 import { menuAt, type MenuItem, type MenuState } from "./Menu";
 
+/** Tipo do arrastar de nota (a pasta da barra lateral só aceita este). */
+export const NOTE_DRAG = "application/x-brainote-note";
+
 type Props = {
   title: string;
   notes: Note[];
@@ -98,6 +101,11 @@ export function NoteList(p: Props) {
                   aria-current={sel ? "true" : undefined}
                   onClick={() => p.onSelect(n.id)}
                   onContextMenu={(e) => rowMenu(e, n)}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(NOTE_DRAG, n.id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
                 >
                   <span className="row-t">{n.title.trim() || "Nova nota"}</span>
                   <span className="row-m">

@@ -53,3 +53,50 @@ export function toggleTask(doc: JSONContent, index: number): JSONContent {
   };
   return visit(doc);
 }
+
+// ---------- Exportar a nota (versão 1.1) ----------
+
+type Mark = { type: string };
+const MD_MARKS: Record<string, [string, string]> = {
+  bold: ["**", "**"],
+  italic: ["*", "*"],
+  strike: ["~~", "~~"],
+  underline: ["<u>", "</u>"], // Markdown não tem sublinhado
+  highlight: ["<mark>", "</mark>"],
+};
+
+/**
+ * Nota em Markdown (`plain = false`: títulos, listas, checklists "- [ ]" e negrito) ou em texto simples
+ * (`plain = true`: o mesmo, sem marcações de formatação).
+ * shortcut: não escapa caracteres do Markdown digitados na nota (ex. "*"); escapar se alguém reclamar.
+ */
+export function noteToText(title: string, doc: JSONContent, plain: boolean): string {
+  const inline = (n: JSONContent): string => {
+    if (n.type === "hardBreak") return plain ? "\n" : "  \n";
+    if (n.text === undefined) return (n.content ?? []).map(inline).join("");
+    if (plain) return n.text;
+    return ((n.marks ?? []) as Mark[]).reduce((t, m) => (MD_MARKS[m.type] ? MD_MARKS[m.type][0] + t + MD_MARKS[m.type][1] : t), n.text);
+  };
+  const blocks: string[] = [];
+  const list = (n: JSONContent, indent: string) => {
+    (n.content ?? []).forEach((item, i) => {
+      const [first, ...rest] = item.content ?? [];
+      const mark =
+        n.type === "taskList" ? (plain ? (item.attrs?.checked ? "[x]" : "[ ]") : item.attrs?.checked ? "- [x]" : "- [ ]")
+        : n.type === "orderedList" ? `${(n.attrs?.start ?? 1) + i}.`
+        : plain ? "•" : "-";
+      blocks.push(`${indent}${mark} ${first ? inline(first) : ""}`);
+      for (const sub of rest) list(sub, indent + "  "); // listas dentro de listas
+    });
+  };
+  for (const n of doc.content ?? []) {
+    if (n.type === "heading") blocks.push((plain ? "" : "#".repeat(n.attrs?.level ?? 2) + " ") + inline(n), "");
+    else if (n.type === "paragraph") blocks.push(inline(n), "");
+    else if (n.type?.endsWith("List")) {
+      list(n, "");
+      blocks.push("");
+    }
+  }
+  const head = title.trim() || "Nova nota";
+  return `${plain ? head : `# ${head}`}\n\n${blocks.join("\n").replace(/\n{3,}/g, "\n\n").trim()}\n`;
+}

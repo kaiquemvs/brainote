@@ -1,17 +1,20 @@
-// Configurações (docs/ESPECIFICACAO.md, 7): iniciar com o Windows, backup e versão.
+// Configurações (docs/ESPECIFICACAO.md, 7): iniciar com o Windows, correção automática, backup e versão.
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { api, type Autostart } from "./api";
 import { Dialog } from "./Dialog";
+import { setAutocorrect } from "./spellcheck";
 
 export function Settings({ onClose }: { onClose: () => void }) {
   const [auto, setAuto] = useState<Autostart | null>(null);
   const [version, setVersion] = useState("");
   const [confirmImport, setConfirmImport] = useState(false);
   const [status, setStatus] = useState("");
+  const [fix, setFix] = useState(false);
 
   useEffect(() => {
     api.getAutostart().then(setAuto);
+    api.getAutocorrect().then(setFix);
     getVersion().then(setVersion);
   }, []);
 
@@ -19,6 +22,12 @@ export function Settings({ onClose }: { onClose: () => void }) {
     if (!auto) return;
     await api.setAutostart(!auto.enabled);
     setAuto({ ...auto, enabled: !auto.enabled });
+  };
+
+  const toggleFix = async () => {
+    await api.setAutocorrect(!fix);
+    setAutocorrect(!fix); // vale na hora, sem reabrir o app
+    setFix(!fix);
   };
 
   const exportBackup = async () => {
@@ -38,6 +47,11 @@ export function Settings({ onClose }: { onClose: () => void }) {
         <span className={`sw${auto?.enabled ? " is-on" : ""}`}><span className="knob" /></span>
       </button>
       {auto && !auto.available && <p className="t2 dlg-note">Disponível só no app instalado.</p>}
+      <button className="toggle-row" role="switch" aria-checked={fix} onClick={toggleFix} style={{ marginTop: 8 }}>
+        <span>Correção automática</span>
+        <span className={`sw${fix ? " is-on" : ""}`}><span className="knob" /></span>
+      </button>
+      <p className="t2 dlg-note">Ao digitar, corrige erros comuns (acento esquecido, letra trocada) em português e inglês. Ctrl+Z desfaz a troca.</p>
 
       <p className="lbl" style={{ margin: "20px 4px 8px" }}>Backup</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>

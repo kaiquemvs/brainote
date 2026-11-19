@@ -45,6 +45,13 @@ function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 
 export const api = {
   /** caminho do arquivo salvo, ou null se cancelou */
+  exportNote: (title: string, markdown: string, text: string) => call<string | null>("export_note", { title, markdown, text }),
+  spellCheck: (words: string[]) => call<boolean[]>("spell_check", { words }),
+  spellSuggest: (word: string) => call<string[]>("spell_suggest", { word }),
+  spellAutocorrect: (word: string) => call<string | null>("spell_autocorrect", { word }),
+  getAutocorrect: () => call<boolean>("get_autocorrect"),
+  setAutocorrect: (enabled: boolean) => call<void>("set_autocorrect", { enabled }),
+  /** caminho do arquivo salvo, ou null se cancelou */
   exportBackup: () => call<string | null>("export_backup"),
   /** false se cancelou */
   importBackup: () => call<boolean>("import_backup"),

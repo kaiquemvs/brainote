@@ -10,9 +10,10 @@ import App from "./App";
 import { api } from "./api";
 import { WidgetApp } from "./Widget";
 
-// Sem o menu de navegador (Voltar, Recarregar…) no botão direito; campos de texto mantêm copiar/colar.
+// Sem o menu de navegador (Voltar, Recarregar…) no botão direito. Campos de texto e o texto da nota
+// mantêm o menu do Windows: copiar/colar e as sugestões do corretor ortográfico.
 document.addEventListener("contextmenu", (e) => {
-  if (!(e.target as HTMLElement).closest("input, textarea")) e.preventDefault();
+  if (!(e.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) e.preventDefault();
 });
 
 // Janelas de widget abrem o mesmo app com "#widget=<id>" no endereço.

@@ -38,3 +38,19 @@ test("marcar no widget muda só o item escolhido", () => {
 test("nota da Fase 1 (só texto) vira parágrafos", () => {
   assert.deepEqual(noteLines(noteDoc({ content_json: null, plain_text: "a\n\nb" })), [{ text: "a" }, { text: "b" }]);
 });
+
+test("exportar: Markdown com títulos, formatação, listas e checklist; texto simples sem marcações", async () => {
+  const { noteToText } = await import("./noteContent.ts");
+  const t = (text, marks) => ({ type: "text", text, ...(marks && { marks: marks.map((type) => ({ type })) }) });
+  const nota = {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [t("Texto "), t("forte", ["bold"]), t(" e "), t("marcado", ["highlight"])] },
+      { type: "heading", attrs: { level: 3 }, content: [t("Tarefas")] },
+      { type: "taskList", content: [task("café", true), task("pão", false)] },
+      { type: "orderedList", attrs: { start: 1 }, content: [{ type: "listItem", content: [p("um")] }] },
+    ],
+  };
+  assert.equal(noteToText("Mercado", nota, false), "# Mercado\n\nTexto **forte** e <mark>marcado</mark>\n\n### Tarefas\n\n- [x] café\n- [ ] pão\n\n1. um\n");
+  assert.equal(noteToText("", nota, true), "Nova nota\n\nTexto forte e marcado\n\nTarefas\n\n[x] café\n[ ] pão\n\n1. um\n");
+});

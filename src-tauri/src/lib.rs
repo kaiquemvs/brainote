@@ -1,6 +1,7 @@
 mod background;
 #[cfg(windows)]
 mod desktop;
+mod spell;
 mod store;
 mod widgets;
 
@@ -64,6 +65,9 @@ fn apply_appearance(w: &WebviewWindow, a: &Appearance) -> tauri::Result<()> {
     let postit = widgets::id_of(w.label())
         .and_then(|id| background::with_db(w.app_handle(), |c| store::get_widget(c, id)))
         .is_some_and(|wd| wd.kind == "postit");
+    // Trocar o tema com a janela ativa faz o Windows desenhar o vidro como "janela sem foco" (opaco) até ele
+    // ser recriado; por isso o vidro sai antes da troca e volta depois (o mesmo que desligar e ligar à mão).
+    w.set_effects(None)?;
     w.set_theme(Some(if a.theme == "dark" && !postit { Theme::Dark } else { Theme::Light }))?;
     w.set_effects(a.glass.then(|| EffectsBuilder::new().effect(Effect::Acrylic).build()))
 }
@@ -283,6 +287,56 @@ fn delete_event(app: AppHandle, db: State<Db>, id: &str) -> Res<()> {
     write(&app, &db, |c| store::delete_event(c, id))
 }
 
+// ---------- Exportar nota ----------
+
+/// Salva a nota num .md (padrão) ou .txt escolhido pela pessoa; os dois textos vêm prontos da tela.
+/// `None` = cancelou. As notas continuam no banco: isto é só uma cópia fora do app.
+#[tauri::command]
+async fn export_note(app: AppHandle, title: String, markdown: String, text: String) -> Res<Option<String>> {
+    let name: String = title.chars().filter(|c| !r#"<>:"/|?*"#.contains(*c) && !c.is_control()).collect();
+    let name = if name.trim().is_empty() { "nota".to_string() } else { name.trim().to_string() };
+    let Some(path) = app.dialog().file().set_title("Exportar nota").add_filter("Markdown", &["md"]).add_filter("Texto", &["txt"]).set_file_name(name).blocking_save_file()
+    else {
+        return Ok(None);
+    };
+    let mut path = path.as_path().ok_or("Escolha uma pasta do computador.")?.to_path_buf();
+    if path.extension().is_none() {
+        path.set_extension("md");
+    }
+    let txt = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("txt"));
+    std::fs::write(&path, if txt { text } else { markdown }).map_err(|e| format!("Não foi possível salvar a nota: {e}"))?;
+    Ok(Some(path.display().to_string()))
+}
+
+// ---------- Corretor ortográfico ----------
+
+// async: o dicionário de português pode ainda estar carregando na primeira chamada
+#[tauri::command]
+async fn spell_check(words: Vec<String>) -> Vec<bool> {
+    spell::check(&words)
+}
+
+#[tauri::command]
+async fn spell_suggest(word: String) -> Vec<String> {
+    spell::suggest(&word)
+}
+
+#[tauri::command]
+async fn spell_autocorrect(word: String) -> Option<String> {
+    spell::autocorrect(&word)
+}
+
+/// Correção automática ao digitar (Configurações). Começa desligada.
+#[tauri::command]
+fn get_autocorrect(db: State<Db>) -> Res<bool> {
+    with(&db, |c| Ok(store::get_setting(c, "autocorrect")?.is_some_and(|v| v == "1")))
+}
+
+#[tauri::command]
+fn set_autocorrect(db: State<Db>, enabled: bool) -> Res<()> {
+    with(&db, |c| store::set_setting(c, "autocorrect", if enabled { "1" } else { "0" }))
+}
+
 // ---------- Widgets ----------
 
 #[tauri::command]
@@ -391,6 +445,7 @@ pub fn run() {
                 background::show_main(app.handle());
             }
             background::start_scheduler(app.handle().clone());
+            spell::warm_up();
             Ok(())
         })
         .on_window_event(|window, event| match widgets::id_of(window.label()) {
@@ -404,6 +459,12 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            spell_check,
+            spell_suggest,
+            spell_autocorrect,
+            get_autocorrect,
+            set_autocorrect,
+            export_note,
             export_backup,
             import_backup,
             list_events,

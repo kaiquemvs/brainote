@@ -25,6 +25,7 @@ tauri-winrt-notification = "0.8.1"
 tauri-plugin-single-instance = "2.5.5"
 tauri-plugin-autostart = "2.7.0"
 tauri-plugin-dialog = "2.8.4"
+spellbook = "0.4.2"
 
 # https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

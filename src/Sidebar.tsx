@@ -1,8 +1,9 @@
 // Barra lateral (docs/ESPECIFICACAO.md, 4.2).
-import { useState, type ReactNode, type MouseEvent } from "react";
+import { useState, type ButtonHTMLAttributes, type DragEvent, type ReactNode, type MouseEvent } from "react";
 import { api, type Appearance, type Folder, type Note } from "./api";
 import { Icon, paths } from "./icons";
 import { menuAt, type MenuState } from "./Menu";
+import { NOTE_DRAG } from "./NoteList";
 import logo from "../assets/icone/svg/brainote-claro-small.svg";
 
 export const SHORTCUTS = [
@@ -64,13 +65,33 @@ export function Sidebar(p: Props) {
       ],
     });
 
-  const nav = (id: string, label: string, icon: ReactNode, count: number, onContextMenu?: (e: MouseEvent) => void) => (
+  // Soltar uma nota arrastada da lista numa pasta: move a nota para ela.
+  const [dropOn, setDropOn] = useState<string | null>(null);
+  const dropTarget = (f: Folder) => ({
+    onDragOver: (e: DragEvent) => {
+      if (!e.dataTransfer.types.includes(NOTE_DRAG)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setDropOn(f.id);
+    },
+    onDragLeave: () => setDropOn(null),
+    onDrop: async (e: DragEvent) => {
+      e.preventDefault();
+      setDropOn(null);
+      const id = e.dataTransfer.getData(NOTE_DRAG);
+      if (!id) return;
+      await api.moveNote(id, f.id);
+      await p.onChanged();
+    },
+  });
+
+  const nav = (id: string, label: string, icon: ReactNode, count: number, extra?: ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button
       key={id}
-      className={`nav${p.section === id ? " is-on" : ""}`}
+      className={`nav${p.section === id ? " is-on" : ""}${dropOn === id ? " is-drop" : ""}`}
       aria-current={p.section === id ? "page" : undefined}
       onClick={() => p.onSection(id)}
-      onContextMenu={onContextMenu}
+      {...extra}
     >
       <span className="nav-ic"><Icon>{icon}</Icon></span>
       <span className="nav-l">{label}</span>
@@ -115,7 +136,7 @@ export function Sidebar(p: Props) {
               />
             </div>
           ) : (
-            nav(f.id, f.name, paths.folder, p.notes.filter((n) => n.folder_id === f.id).length, (e) => folderMenu(e, f))
+            nav(f.id, f.name, paths.folder, p.notes.filter((n) => n.folder_id === f.id).length, { onContextMenu: (e) => folderMenu(e, f), ...dropTarget(f) })
           ),
         )}
         <button className="nav" style={{ marginTop: 4 }} onClick={newFolder}>

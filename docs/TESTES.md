@@ -84,6 +84,28 @@ Use esta lista a cada versão nova. Marque com `x` o que passou. Teste no **app 
 - [ ] Depois de importar: notas, pastas, lembretes, eventos, widgets e tema voltam como estavam.
 - [ ] Importar um arquivo que não é backup do brainote mostra erro e não muda nada.
 
+## Versão 1.1 — Lote A (visual e lembretes)
+
+- [ ] No tema **escuro**, o post-it continua amarelo claro com texto escuro; os outros widgets ficam escuros.
+- [ ] A barra de rolagem é fina, arredondada e nas cores do tema (veja numa nota longa e na lista).
+- [ ] As listas suspensas (nota vinculada, Configurações) abrem no visual do app e funcionam com setas + Enter.
+- [ ] Lembrete e evento: a data abre um calendário; a hora gira com a roda do mouse (um número por clique da roda).
+- [ ] Repetir: bolinhas **D S T Q Q S S**, **Mensal** e **Anual**; o resumo em texto muda conforme a escolha.
+- [ ] Um lembrete que repete em dias escolhidos reaparece no próximo dia marcado depois de concluído.
+
+## Versão 1.1 — Lote B (edição)
+
+- [ ] **Exportar** (ícone de seta para baixo na barra do editor): salva `.md` por padrão; trocando o tipo para Texto salva `.txt` sem símbolos de formatação.
+- [ ] Arrastar uma nota da lista e soltar numa pasta: a pasta acende durante o arrasto e a nota passa para ela.
+- [ ] **Marca-texto**: selecionar um trecho e clicar numa das 5 cores marca o trecho; clicar em outra cor troca.
+- [ ] **Modo caneta**: ligar no painel do marca-texto; o cursor vira uma caneta e cada trecho arrastado fica marcado; Esc desliga.
+- [ ] **Borracha**: ligar no painel do marca-texto; cada trecho arrastado perde a cor; Esc desliga. As marcas continuam lá depois de trocar de nota e reabrir o app.
+- [ ] As marcas ficam legíveis no tema claro e no escuro.
+- [ ] **Corretor**: palavras erradas em português ou inglês ganham sublinhado vermelho ondulado; palavras certas nos dois idiomas não.
+- [ ] Botão direito numa palavra sublinhada mostra sugestões e **Ignorar**; escolher uma sugestão troca a palavra.
+- [ ] Configurações → **Correção automática** ligada: digitar "voce nao recieve excecao " vira "você não receive exceção "; Ctrl+Z logo depois desfaz só a última troca. Desligada, nada é trocado.
+- [ ] Com **Efeito vidro** ligado, trocar entre Claro e Escuro várias vezes: o vidro continua translúcido, sem precisar desligar e ligar.
+
 ## Teclado e leitura
 
 - [ ] Só com **Tab** dá para chegar em todos os botões, e o botão em foco mostra um contorno.
