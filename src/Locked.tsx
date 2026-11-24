@@ -10,6 +10,9 @@ import { WindowButtons } from "./WindowButtons";
 /** "criar": primeira nota trancada; "abrir": destrancar as notas; "trocar": nas Configurações. */
 export type PasswordMode = "criar" | "abrir" | "trocar";
 
+/** Senha errada ao destrancar (na janela e na tela da nota): a mensagem, com a dica quando existe. */
+const wrongPassword = (hint: string | null) => `Senha incorreta.${hint ? ` Dica: ${hint}` : ""}`;
+
 function PasswordField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label className="fld">
@@ -39,7 +42,7 @@ export function PasswordDialog(p: { mode: PasswordMode; hint: string | null; onD
         : p.mode === "abrir" ? await api.unlockNotes(pw)
         : await api.changePassword(current, pw, hint);
       if (ok) return p.onDone();
-      setError(p.mode === "abrir" ? `Senha incorreta.${p.hint ? ` Dica: ${p.hint}` : ""}` : "A senha atual está incorreta.");
+      setError(p.mode === "abrir" ? wrongPassword(p.hint) : "A senha atual está incorreta.");
     } finally {
       setBusy(false);
     }
@@ -109,7 +112,7 @@ export function LockedNote({ title, hint, onUnlocked }: { title: string; hint: s
           <input id="senha-nota" className="inp" type="password" autoComplete="off" autoFocus placeholder="Senha" value={pw} onChange={(e) => setPw(e.target.value)} />
           <button className="btn-acc" disabled={!pw || busy}>{busy ? "Conferindo…" : "Abrir"}</button>
         </div>
-        {wrong && <p className="dlg-err" role="alert">Senha incorreta.{hint ? ` Dica: ${hint}` : ""}</p>}
+        {wrong && <p className="dlg-err" role="alert">{wrongPassword(hint)}</p>}
       </form>
     </>
   );

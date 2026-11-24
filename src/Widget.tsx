@@ -13,16 +13,18 @@ const month = new Intl.DateTimeFormat("pt-BR", { month: "long" });
 export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appearance }) {
   const [look, setLook] = useState(initialLook);
   const [w, setW] = useState<Widget | null>(null);
-  const [notes, setNotes] = useState<Note[]>([]);
+  const [note, setNote] = useState<Note | null>(null);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [, setTick] = useState(0);
 
+  // Cada widget busca só o que mostra (roda a cada gravação no app): a nota dele, ou lembretes e eventos.
   const load = async () => {
-    const [wd, n, r, e] = await Promise.all([api.getWidget(id), api.listNotes(), api.listReminders(), api.listEvents()]);
+    const wd = await api.getWidget(id);
     setW(wd);
+    if (wd?.note_id) return setNote(await api.getNote(wd.note_id));
+    const [r, e] = await Promise.all([api.listReminders(), api.listEvents()]);
     setEvents(e);
-    setNotes(n);
     setReminders(r);
   };
 
@@ -44,7 +46,6 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
   }, [theme, look.glass]);
 
   if (!w) return null;
-  const note = notes.find((n) => n.id === w.note_id);
   const lines = note ? noteLines(noteDoc(note)) : [];
   const title = note && (note.title.trim() || "Nova nota");
 

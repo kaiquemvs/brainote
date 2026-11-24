@@ -99,6 +99,8 @@ export const api = {
   renameFolder: (id: string, name: string) => call<void>("rename_folder", { id, name }),
   deleteFolder: (id: string) => call<void>("delete_folder", { id }),
   listNotes: () => call<Note[]>("list_notes"),
+  /** a nota de um post-it ou checklist; null se foi apagada */
+  getNote: (id: string) => call<Note | null>("get_note", { id }),
   searchNotes: (query: string) => call<string[]>("search_notes", { query }),
   createNote: (folderId: string | null) => call<Note>("create_note", { folderId }),
   updateNote: (id: string, title: string, contentJson: string, plainText: string) =>

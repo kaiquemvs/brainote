@@ -93,9 +93,6 @@ export function dateInput(d: Date): string {
   return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
 }
 
-/** Valor para <input type="time">: "09:05". */
-export const timeInput = time;
-
 // ---------- Agenda (4.5) ----------
 
 /** Dias da grade, de domingo a sábado: do domingo antes do dia 1 até o sábado depois do último dia. */

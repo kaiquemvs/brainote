@@ -27,10 +27,14 @@ struct Db(Mutex<Connection>);
 
 type Res<T> = Result<T, String>;
 
+/// Roda uma operação do banco que já devolve o erro em texto para a tela.
+fn with_res<T>(db: &State<Db>, f: impl FnOnce(&Connection) -> Res<T>) -> Res<T> {
+    f(&db.0.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
 /// Roda uma operação do banco e transforma o erro em texto para a tela.
 fn with<T>(db: &State<Db>, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Res<T> {
-    let conn = db.0.lock().unwrap_or_else(|e| e.into_inner());
-    f(&conn).map_err(|e| e.to_string())
+    with_res(db, |c| f(c).map_err(|e| e.to_string()))
 }
 
 /// Como `with`, para o que altera dados: depois avisa todas as janelas (app e widgets).
@@ -170,29 +174,15 @@ async fn import_backup(app: AppHandle) -> Res<bool> {
         })?
     };
     let stamp = chrono::Local::now().format("%Y-%m-%d-%H%M%S");
-    {
+    let aside = base.join(format!("anexos-antes-da-importacao-{stamp}"));
+    swap_attachments(&attachments::dir(&app)?, &aside, &incoming, || {
         let db = app.state::<Db>();
         let mut conn = db.0.lock().unwrap_or_else(|e| e.into_inner());
         let copy = base.join(format!("brainote-antes-da-importacao-{stamp}.db"));
-        let imported = conn
-            .execute("VACUUM INTO ?1", [copy.to_string_lossy()])
-            .map_err(|e| format!("Não foi possível guardar a cópia do banco atual, então nada foi importado: {e}"))
-            .and_then(|_| store::import_backup(&mut conn, &data));
-        if let Err(e) = imported {
-            let _ = std::fs::remove_dir_all(&incoming);
-            return Err(e);
-        }
-    }
-    if !is_json {
-        // os anexos atuais ficam guardados ao lado, como a cópia do banco
-        let current = attachments::dir(&app)?;
-        if current.exists() {
-            let _ = std::fs::rename(&current, base.join(format!("anexos-antes-da-importacao-{stamp}")));
-        }
-        if incoming.exists() {
-            std::fs::rename(&incoming, &current).map_err(|e| format!("Os dados foram importados, mas os anexos não: {e}"))?;
-        }
-    }
+        conn.execute("VACUUM INTO ?1", [copy.to_string_lossy()])
+            .map_err(|e| format!("Não foi possível guardar a cópia do banco atual, então nada foi importado: {e}"))?;
+        store::import_backup(&mut conn, &data)
+    })?;
     widgets::reopen_all(&app);
     broadcast_appearance(&app, &with(&app.state::<Db>(), read_appearance)?)?;
     // a senha pode ter vindo junto com o backup: as notas trancadas fecham
@@ -200,6 +190,32 @@ async fn import_backup(app: AppHandle) -> Res<bool> {
     let _ = app.emit("relock", ());
     background::changed(&app);
     Ok(true)
+}
+
+/// Troca os anexos junto com o banco (`import`). Os atuais saem do caminho antes, para `aside`: ficam guardados
+/// ao lado da cópia do banco, e a limpeza (attachments::cleanup) não apaga os que as notas importadas não usam.
+/// Se não der para tirá-los (arquivo aberto em outro programa), nada é importado; se `import` falhar, eles voltam.
+/// Depois, os do backup (`incoming`, só no .zip) entram no lugar.
+fn swap_attachments(current: &Path, aside: &Path, incoming: &Path, import: impl FnOnce() -> Res<()>) -> Res<()> {
+    let fail = |e: String| {
+        let _ = std::fs::remove_dir_all(incoming);
+        e
+    };
+    if current.exists() {
+        std::fs::rename(current, aside).map_err(|e| {
+            fail(format!("Nada foi importado: não foi possível guardar os anexos atuais. Feche os anexos abertos em outros programas e tente de novo. ({e})"))
+        })?;
+    }
+    if let Err(e) = import() {
+        if aside.exists() {
+            let _ = std::fs::rename(aside, current);
+        }
+        return Err(fail(e));
+    }
+    if incoming.exists() {
+        std::fs::rename(incoming, current).map_err(|e| format!("Os dados foram importados, mas os anexos não: {e}"))?;
+    }
+    Ok(())
 }
 
 /// Lê o .zip do backup: devolve os dados e extrai os anexos em `into`.
@@ -255,6 +271,12 @@ fn list_notes(db: State<Db>) -> Res<Vec<store::Note>> {
     with(&db, store::list_notes)
 }
 
+/// A nota de um post-it ou checklist; `None` se ela foi apagada.
+#[tauri::command]
+fn get_note(db: State<Db>, id: &str) -> Res<Option<store::Note>> {
+    with(&db, |c| store::live_note(c, id))
+}
+
 #[tauri::command]
 fn search_notes(db: State<Db>, query: &str) -> Res<Vec<String>> {
     with(&db, |c| store::search_notes(c, query))
@@ -269,14 +291,10 @@ fn create_note(app: AppHandle, db: State<Db>, folder_id: Option<&str>) -> Res<st
 fn update_note(app: AppHandle, db: State<Db>, id: &str, title: &str, content_json: &str, plain_text: &str) -> Res<()> {
     // JSON quebrado deixaria a nota impossível de abrir: recusa antes de gravar
     serde_json::from_str::<serde_json::Value>(content_json).map_err(|e| format!("Conteúdo inválido: {e}"))?;
-    if with(&db, |c| store::note_body(c, id))?.2.is_none() {
-        return write(&app, &db, |c| store::update_note(c, id, title, content_json, plain_text));
-    }
-    // nota trancada: o texto aberto nunca vai para o banco
-    let key = vault_key(&app).ok_or(NO_KEY)?;
-    let body = NoteBody { content_json: Some(content_json.into()), plain_text: plain_text.into() };
-    let sealed = vault::seal(&key, &serde_json::to_vec(&body).map_err(|e| e.to_string())?);
-    write(&app, &db, |c| store::update_locked_note(c, id, title, &sealed))
+    let key = vault_key(&app);
+    with_res(&db, |c| save_note(c, key.as_ref(), id, title, content_json, plain_text))?;
+    background::changed(&app);
+    Ok(())
 }
 
 // ---------- Notas com senha (13, versão 1.2) ----------
@@ -327,6 +345,42 @@ fn has_files(content_json: &str) -> bool {
     content_json.contains(r#""type":"image""#) || content_json.contains(r#""type":"attachment""#)
 }
 
+fn seal_body(key: &vault::Secret, content_json: Option<String>, plain_text: String) -> Res<String> {
+    let body = serde_json::to_vec(&NoteBody { content_json, plain_text }).map_err(|e| e.to_string())?;
+    Ok(vault::seal(key, &body))
+}
+
+/// Grava a nota: aberta se é comum; cifrada com `key` se é trancada (sem a chave, recusa).
+/// O texto aberto de uma nota trancada nunca vai para o banco.
+fn save_note(c: &Connection, key: Option<&vault::Secret>, id: &str, title: &str, content_json: &str, plain_text: &str) -> Res<()> {
+    let err = |e: rusqlite::Error| e.to_string();
+    if store::note_body(c, id).map_err(err)?.2.is_none() {
+        return store::update_note(c, id, title, content_json, plain_text).map_err(err);
+    }
+    let sealed = seal_body(key.ok_or(NO_KEY)?, Some(content_json.into()), plain_text.into())?;
+    store::update_locked_note(c, id, title, &sealed).map_err(err)
+}
+
+/// Tranca a nota: o conteúdo vai cifrado e o texto aberto sai do banco. `false` = já estava trancada.
+fn lock_body(c: &Connection, key: &vault::Secret, id: &str) -> Res<bool> {
+    let err = |e: rusqlite::Error| e.to_string();
+    let (content_json, plain_text, sealed) = store::note_body(c, id).map_err(err)?;
+    if sealed.is_some() {
+        return Ok(false);
+    }
+    if content_json.as_deref().is_some_and(has_files) {
+        return Err("Tire as imagens e os anexos da nota antes de trancá-la.".into());
+    }
+    store::set_note_body(c, id, Some(&seal_body(key, content_json, plain_text)?), None, "").map_err(err)?;
+    Ok(true)
+}
+
+/// Conteúdo aberto de uma nota trancada (só com a chave certa).
+fn open_body(c: &Connection, key: &vault::Secret, id: &str) -> Res<NoteBody> {
+    let sealed = store::note_body(c, id).map_err(|e| e.to_string())?.2.ok_or("Esta nota não está trancada.")?;
+    vault::open(key, &sealed).and_then(|b| serde_json::from_slice(&b).ok()).ok_or_else(|| "Não foi possível abrir a nota.".into())
+}
+
 #[tauri::command]
 fn lock_state(app: AppHandle, db: State<Db>) -> Res<LockState> {
     let has_password = password_of(&db)?.is_some();
@@ -369,10 +423,7 @@ fn lock_notes(app: AppHandle) {
 #[tauri::command]
 fn open_locked_note(app: AppHandle, db: State<Db>, id: &str) -> Res<NoteBody> {
     let key = vault_key(&app).ok_or(NO_KEY)?;
-    let sealed = with(&db, |c| store::note_body(c, id))?.2.ok_or("Esta nota não está trancada.")?;
-    vault::open(&key, &sealed)
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .ok_or_else(|| "Não foi possível abrir a nota.".into())
+    with_res(&db, |c| open_body(c, &key, id))
 }
 
 /// Tranca a nota: o conteúdo vai criptografado e os widgets dela saem da área de trabalho.
@@ -381,15 +432,9 @@ fn open_locked_note(app: AppHandle, db: State<Db>, id: &str) -> Res<NoteBody> {
 async fn lock_note(app: AppHandle, id: String) -> Res<()> {
     let key = vault_key(&app).ok_or(NO_KEY)?;
     let db = app.state::<Db>();
-    let (content_json, plain_text, sealed) = with(&db, |c| store::note_body(c, &id))?;
-    if sealed.is_some() {
+    if !with_res(&db, |c| lock_body(c, &key, &id))? {
         return Ok(());
     }
-    if content_json.as_deref().is_some_and(has_files) {
-        return Err("Tire as imagens e os anexos da nota antes de trancá-la.".into());
-    }
-    let sealed = vault::seal(&key, &serde_json::to_vec(&NoteBody { content_json, plain_text }).map_err(|e| e.to_string())?);
-    with(&db, |c| store::set_note_body(c, &id, Some(&sealed), None, ""))?;
     for w in with(&db, store::list_widgets)?.into_iter().filter(|w| w.note_id.as_deref() == Some(id.as_str())) {
         widgets::remove(&app, &w.id);
     }
@@ -400,8 +445,13 @@ async fn lock_note(app: AppHandle, id: String) -> Res<()> {
 /// Tira o cadeado: a nota volta a ser comum.
 #[tauri::command]
 fn unlock_note(app: AppHandle, db: State<Db>, id: &str) -> Res<()> {
-    let body = open_locked_note(app.clone(), db.clone(), id)?;
-    write(&app, &db, |c| store::set_note_body(c, id, None, body.content_json.as_deref(), &body.plain_text))
+    let key = vault_key(&app).ok_or(NO_KEY)?;
+    with_res(&db, |c| {
+        let body = open_body(c, &key, id)?;
+        store::set_note_body(c, id, None, body.content_json.as_deref(), &body.plain_text).map_err(|e| e.to_string())
+    })?;
+    background::changed(&app);
+    Ok(())
 }
 
 /// Confere a senha atual e refaz todas as notas trancadas com a nova, numa transação só; `false` = senha atual errada.
@@ -830,6 +880,7 @@ pub fn run() {
             rename_folder,
             delete_folder,
             list_notes,
+            get_note,
             search_notes,
             create_note,
             update_note,
@@ -845,6 +896,61 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use std::io::Write;
+
+    /// Importar: os anexos atuais saem do caminho antes de trocar o banco e voltam se a importação falhar.
+    #[test]
+    fn troca_de_anexos_na_importacao() {
+        let tmp = std::env::temp_dir().join(format!("brainote-teste-{}", uuid::Uuid::new_v4()));
+        let (current, incoming) = (tmp.join("anexos"), tmp.join("anexos-importando"));
+        let put = |dir: &std::path::Path, name: &str| {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(dir.join(name), b"x").unwrap();
+        };
+        // importação que falha: tudo volta como estava
+        put(&current, "atual.png");
+        put(&incoming, "do-backup.png");
+        assert!(super::swap_attachments(&current, &tmp.join("antes-1"), &incoming, || Err("falhou".into())).is_err());
+        assert!(current.join("atual.png").exists() && !tmp.join("antes-1").exists() && !incoming.exists());
+        // backup .json (sem anexos): os atuais ficam guardados ao lado, longe da limpeza
+        super::swap_attachments(&current, &tmp.join("antes-2"), &incoming, || Ok(())).unwrap();
+        assert!(tmp.join("antes-2").join("atual.png").exists() && !current.exists());
+        // backup .zip: os do backup entram no lugar, e os atuais ficam guardados
+        put(&current, "atual-2.png");
+        put(&incoming, "do-backup.png");
+        super::swap_attachments(&current, &tmp.join("antes-3"), &incoming, || Ok(())).unwrap();
+        assert!(current.join("do-backup.png").exists() && !current.join("atual-2.png").exists());
+        assert!(tmp.join("antes-3").join("atual-2.png").exists() && !incoming.exists());
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    /// Nota trancada: o texto aberto nunca vai para o banco, nem ao trancar nem ao salvar; só a chave certa abre.
+    #[test]
+    fn nota_trancada_nunca_grava_texto_aberto() {
+        use crate::{store, vault};
+        let tmp = std::env::temp_dir().join(format!("brainote-teste-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let c = store::open(&tmp.join("teste.db")).unwrap();
+        let key = vault::derive("senha", &vault::new_salt()).unwrap();
+        let doc = r#"{"type":"doc"}"#;
+        let n = store::create_note(&c, None).unwrap();
+        super::save_note(&c, None, &n.id, "Banco", doc, "agência 1234").unwrap();
+        assert!(super::lock_body(&c, &key, &n.id).unwrap());
+        assert!(!super::lock_body(&c, &key, &n.id).unwrap()); // trancar de novo não muda nada
+        assert!(super::save_note(&c, None, &n.id, "Banco", doc, "agência 5678").is_err()); // sem a chave, recusa
+        super::save_note(&c, Some(&key), &n.id, "Banco", doc, "agência 5678").unwrap();
+        let (json, text, sealed) = store::note_body(&c, &n.id).unwrap();
+        assert!(json.is_none() && text.is_empty() && sealed.is_some());
+        assert!(store::search_notes(&c, "agencia").unwrap().is_empty());
+        assert_eq!(super::open_body(&c, &key, &n.id).unwrap().plain_text, "agência 5678");
+        let other = vault::derive("outra", &vault::new_salt()).unwrap();
+        assert!(super::open_body(&c, &other, &n.id).is_err());
+        // nota com imagem não tranca
+        let img = store::create_note(&c, None).unwrap();
+        super::save_note(&c, None, &img.id, "Foto", r#"{"type":"doc","content":[{"type":"image","attrs":{"src":"anexo:x"}}]}"#, "").unwrap();
+        assert!(super::lock_body(&c, &key, &img.id).is_err());
+        drop(c);
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
 
     /// O backup .zip devolve os dados e extrai só o que está em "anexos/", sem sair da pasta.
     #[test]

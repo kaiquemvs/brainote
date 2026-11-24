@@ -1,6 +1,6 @@
 //! Banco SQLite do brainote (docs/ESPECIFICACAO.md, seção 8).
 
-use chrono::{DateTime, Datelike, Days, Local, Months, SecondsFormat};
+use chrono::{DateTime, Datelike, Days, Local, Months, SecondsFormat, Timelike};
 use rusqlite::{params, Connection, OptionalExtension, Result, Row};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -422,21 +422,37 @@ pub fn delete_reminder(c: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
-/// Concluir um lembrete repetido cria a próxima ocorrência.
+/// Concluir um lembrete repetido cria a próxima ocorrência; desmarcar apaga essa próxima (se ela ainda não
+/// avisou), para marcar e desmarcar por engano não deixar lembretes em dobro.
 pub fn set_reminder_done(c: &Connection, id: &str, done: bool) -> Result<()> {
     let tx = c.unchecked_transaction()?;
+    type Row = (String, Option<String>, String, String, bool, Option<String>);
+    let row: Option<Row> = tx
+        .query_row("SELECT title, note_id, due_at, repeat, done, done_at FROM reminders WHERE id = ?1", [id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
+        })
+        .optional()?;
+    let Some((title, note_id, due_at, repeat, was_done, done_at)) = row else { return Ok(()) };
+    if done == was_done {
+        return Ok(());
+    }
+    // a próxima ocorrência: mesmo título, nota e repetição, no horário seguinte ao da conclusão
+    const NEXT: &str = "title = ?1 AND note_id IS ?2 AND repeat = ?3 AND due_at = ?4 AND done = 0";
     if done {
-        let open: Option<(String, Option<String>, String, String)> = tx
-            .query_row("SELECT title, note_id, due_at, repeat FROM reminders WHERE id = ?1 AND done = 0", [id], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
-            })
-            .optional()?;
-        let Some((title, note_id, due_at, repeat)) = open else { return Ok(()) }; // já estava concluído
-        if let Some(next) = next_due(&due_at, &repeat, Local::now()) {
-            create_reminder(&tx, &ReminderInput { note_id, title, due_at: next, repeat })?;
+        // sem fração de segundo: o mesmo instante volta igual de `done_at` ao desmarcar
+        let at = Local::now().with_nanosecond(0).unwrap_or_else(Local::now);
+        if let Some(next) = next_due(&due_at, &repeat, at) {
+            let exists: bool = tx.query_row(&format!("SELECT EXISTS(SELECT 1 FROM reminders WHERE {NEXT})"), params![title, note_id, repeat, next], |r| r.get(0))?;
+            if !exists {
+                create_reminder(&tx, &ReminderInput { note_id, title, due_at: next, repeat })?;
+            }
         }
-        tx.execute("UPDATE reminders SET done = 1, done_at = ?2 WHERE id = ?1", params![id, now()])?;
+        tx.execute("UPDATE reminders SET done = 1, done_at = ?2 WHERE id = ?1", params![id, at.to_rfc3339_opts(SecondsFormat::Secs, false)])?;
     } else {
+        let marked = done_at.and_then(|d| DateTime::parse_from_rfc3339(&d).ok()).map(|d| d.with_timezone(&Local));
+        if let Some(next) = marked.and_then(|at| next_due(&due_at, &repeat, at)) {
+            tx.execute(&format!("DELETE FROM reminders WHERE {NEXT} AND notified_at IS NULL"), params![title, note_id, repeat, next])?;
+        }
         tx.execute("UPDATE reminders SET done = 0, done_at = NULL WHERE id = ?1", [id])?;
     }
     tx.commit()
@@ -613,6 +629,11 @@ pub fn note_title(c: &Connection, id: &str) -> Result<String> {
 
 fn get_note(c: &Connection, id: &str) -> Result<Note> {
     c.query_row(&format!("SELECT {NOTE_COLS} FROM notes WHERE id = ?1"), [id], note)
+}
+
+/// A nota, se ainda não foi para a lixeira (post-it e checklist na área de trabalho).
+pub fn live_note(c: &Connection, id: &str) -> Result<Option<Note>> {
+    c.query_row(&format!("SELECT {NOTE_COLS} FROM notes WHERE id = ?1 AND deleted_at IS NULL"), [id], note).optional()
 }
 
 /// Notas não apagadas, da edição mais recente para a mais antiga.
@@ -806,6 +827,26 @@ mod tests {
         set_note_body(&c, &n.id, None, Some(r#"{"type":"doc"}"#), "agência 1234").unwrap();
         assert_eq!(search_notes(&c, "agencia").unwrap(), vec![n.id.clone()]);
         assert!(locked_notes(&c).unwrap().is_empty());
+    }
+
+    #[test]
+    fn lembrete_repetido_marcar_e_desmarcar_sem_duplicar() {
+        let c = db();
+        let r = create_reminder(
+            &c,
+            &ReminderInput { note_id: None, title: "Remédio".into(), due_at: "2026-11-16T09:00:00-03:00".into(), repeat: "weekly:1".into() },
+        )
+        .unwrap();
+        let pending = || c.query_row("SELECT count(*) FROM reminders WHERE done = 0", [], |r| r.get::<_, i64>(0)).unwrap();
+        let total = || c.query_row("SELECT count(*) FROM reminders", [], |r| r.get::<_, i64>(0)).unwrap();
+        set_reminder_done(&c, &r.id, true).unwrap();
+        assert_eq!((pending(), total()), (1, 2)); // a próxima segunda
+        set_reminder_done(&c, &r.id, false).unwrap();
+        assert_eq!((pending(), total()), (1, 1)); // desfeito: só o original, pendente de novo
+        set_reminder_done(&c, &r.id, true).unwrap();
+        set_reminder_done(&c, &r.id, false).unwrap();
+        set_reminder_done(&c, &r.id, true).unwrap();
+        assert_eq!((pending(), total()), (1, 2)); // uma próxima só, sem cópias
     }
 
     #[test]
