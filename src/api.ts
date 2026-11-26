@@ -83,8 +83,12 @@ export const api = {
   createWidget: (kind: WidgetKind, noteId: string | null) => call<Widget>("create_widget", { kind, noteId }),
   deleteWidget: (id: string) => call<void>("delete_widget", { id }),
   setWidgetColor: (id: string, color: string) => call<void>("set_widget_color", { id, color }),
-  widgetMenu: () => call<void>("widget_menu"),
-  openNote: (id: string) => call<void>("open_note", { id }),
+  setWidgetOnTop: (id: string, onTop: boolean) => call<void>("set_widget_on_top", { id, onTop }),
+  setWidgetNote: (id: string, noteId: string) => call<void>("set_widget_note", { id, noteId }),
+  /** "Trocar nota…": abre o app com a lista de notas para este widget */
+  pickWidgetNote: (id: string) => call<void>("pick_widget_note", { id }),
+  /** a nota do widget no app (agenda: a tela de Agenda) */
+  openWidget: (id: string) => call<void>("open_widget", { id }),
   listReminders: () => call<Reminder[]>("list_reminders"),
   createReminder: (reminder: ReminderInput) => call<Reminder>("create_reminder", { reminder }),
   updateReminder: (id: string, reminder: ReminderInput) => call<void>("update_reminder", { id, reminder }),

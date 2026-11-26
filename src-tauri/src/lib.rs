@@ -13,7 +13,6 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri_plugin_dialog::DialogExt;
-use tauri::window::{Effect, EffectsBuilder};
 use tauri::{AppHandle, Emitter, Manager, State, Theme, WebviewWindow, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_opener::OpenerExt;
@@ -67,23 +66,19 @@ fn read_appearance(c: &Connection) -> rusqlite::Result<Appearance> {
     })
 }
 
-/// Vidro = Acrylic do Windows 11 (desfoca o que está atrás da janela; o Mica ficou fraco demais).
-/// A variante clara/escura do Acrylic segue o tema da janela, por isso o `set_theme`.
+/// Vidro (o mesmo efeito do TranslucentRM, desktop.rs) na janela principal, onde só a barra lateral fica
+/// translúcida (App.css), e no widget de checklist. Post-it e agenda ficam sempre com cor sólida.
 fn apply_appearance(w: &WebviewWindow, a: &Appearance) -> tauri::Result<()> {
-    // post-it mantém as cores claras nos dois temas, inclusive o vidro por trás dele
-    let postit = widgets::id_of(w.label())
+    let kind = widgets::id_of(w.label())
         .and_then(|id| background::with_db(w.app_handle(), |c| store::get_widget(c, id)))
-        .is_some_and(|wd| wd.kind == "postit");
-    // Trocar o tema com a janela ativa faz o Windows desenhar o vidro como "janela sem foco" (opaco) até ele
-    // ser recriado; por isso o vidro sai antes da troca e volta depois (o mesmo que desligar e ligar à mão).
-    w.set_effects(None)?;
+        .map(|wd| wd.kind);
+    // post-it mantém as cores claras nos dois temas
+    let postit = kind.as_deref() == Some("postit");
     w.set_theme(Some(if a.theme == "dark" && !postit { Theme::Dark } else { Theme::Light }))?;
-    w.set_effects(a.glass.then(|| EffectsBuilder::new().effect(Effect::Acrylic).build()))?;
-    // vidro ativo também sem foco; depois da troca de tema, que desenha as janelas sem foco como inativas
     #[cfg(windows)]
     {
-        let win = w.clone();
-        w.run_on_main_thread(move || desktop::keep_glass_active(&win))?; // precisa ser na thread da janela
+        let (win, on) = (w.clone(), a.glass && kind.as_deref().is_none_or(|k| k == "checklist"));
+        w.run_on_main_thread(move || desktop::set_glass(&win, on))?;
     }
     Ok(())
 }
@@ -727,15 +722,30 @@ fn set_widget_color(app: AppHandle, db: State<Db>, id: &str, color: &str) -> Res
 }
 
 #[tauri::command]
-async fn widget_menu(app: AppHandle, window: WebviewWindow) -> Res<()> {
-    widgets::popup_menu(&app, &window).map_err(|e| e.to_string())
+fn set_widget_on_top(app: AppHandle, id: &str, on_top: bool) {
+    widgets::set_on_top(&app, id, on_top);
 }
 
-/// Duplo clique no post-it: abre a nota no app.
 #[tauri::command]
-fn open_note(app: AppHandle, id: &str) {
-    widgets::open_in_app(&app, Some(id));
+fn set_widget_note(app: AppHandle, id: &str, note_id: &str) -> Res<()> {
+    widgets::set_note(&app, id, note_id)
 }
+
+/// "Trocar nota…" no widget: a escolha acontece no app, que tem espaço para a lista de notas.
+#[tauri::command]
+fn pick_widget_note(app: AppHandle, id: &str) {
+    background::show_main(&app);
+    let _ = app.emit("pick-widget-note", id);
+}
+
+/// "Abrir no brainote" e duplo clique no post-it: a nota do widget; no widget da agenda, a tela de Agenda.
+#[tauri::command]
+fn open_widget(app: AppHandle, db: State<Db>, id: &str) -> Res<()> {
+    let note = with(&db, |c| store::get_widget(c, id))?.note_id;
+    widgets::open_in_app(&app, note.as_deref());
+    Ok(())
+}
+
 
 // ---------- Iniciar com o Windows ----------
 
@@ -864,8 +874,10 @@ pub fn run() {
             create_widget,
             delete_widget,
             set_widget_color,
-            widget_menu,
-            open_note,
+            set_widget_on_top,
+            set_widget_note,
+            pick_widget_note,
+            open_widget,
             list_reminders,
             create_reminder,
             update_reminder,

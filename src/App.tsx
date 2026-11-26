@@ -10,7 +10,7 @@ import { Reminders } from "./Reminders";
 import { Settings } from "./Settings";
 import { setAutocorrect } from "./spellcheck";
 import { Sidebar, SHORTCUTS } from "./Sidebar";
-import { WidgetMenu } from "./WidgetMenu";
+import { NotePicker, WidgetMenu } from "./WidgetMenu";
 import { WindowButtons } from "./WindowButtons";
 import { Agenda } from "./Agenda";
 import { EventForm, type EventFormInit } from "./EventForm";
@@ -41,6 +41,8 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [eventForm, setEventForm] = useState<EventFormInit | null>(null);
   const [widgetMenuOpen, setWidgetMenuOpen] = useState(false);
+  // "Trocar nota…" no menu de um widget
+  const [pickWidget, setPickWidget] = useState<Widget | null>(null);
   const [vault, setVault] = useState<LockState>({ has_password: false, unlocked: false, hint: null });
   const [askPassword, setAskPassword] = useState<{ mode: PasswordMode; then: () => void } | null>(null);
   const loadVault = () => api.lockState().then(setVault);
@@ -175,6 +177,7 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
         setWidgetMenuOpen(true);
       }),
       listen("open-agenda", () => handlers.current.openAgenda()),
+      listen<string>("pick-widget-note", (e) => api.getWidget(e.payload).then(setPickWidget)),
       // janela fechada (vai para a bandeja) ou backup importado: as notas com senha trancam
       listen("relock", () => handlers.current.lockNow()),
       // tema e vidro trocados por fora (ex.: backup importado)
@@ -301,6 +304,16 @@ export default function App({ initialLook }: { initialLook: Appearance }) {
             await loadVault();
             askPassword.then();
           }}
+        />
+      )}
+      {pickWidget && pickWidget.kind !== "agenda" && (
+        <NotePicker
+          kind={pickWidget.kind}
+          notes={notes}
+          noteId={pickWidget.note_id}
+          change
+          onPick={(id) => api.setWidgetNote(pickWidget.id, id)}
+          onClose={() => setPickWidget(null)}
         />
       )}
       {widgetMenuOpen && (

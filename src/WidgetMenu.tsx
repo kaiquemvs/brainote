@@ -69,25 +69,39 @@ export function WidgetMenu({ widgets, notes, noteId, onClose }: Props) {
           );
         })}
       </div>
-      {picking && <NotePicker kind={picking} notes={notes} noteId={noteId} onClose={() => setPicking(null)} />}
+      {picking && (
+        <NotePicker kind={picking} notes={notes} noteId={noteId} onPick={(id) => api.createWidget(picking, id)} onClose={() => setPicking(null)} />
+      )}
     </>
   );
 }
 
-/** Escolher a nota do post-it ou do checklist (já marcada a que está aberta). */
-function NotePicker({ kind, notes, noteId, onClose }: { kind: "postit" | "checklist"; notes: Note[]; noteId: string | null; onClose: () => void }) {
+type PickerProps = {
+  kind: "postit" | "checklist";
+  notes: Note[];
+  /** a nota já marcada: a aberta no app, ou a atual do widget */
+  noteId: string | null;
+  /** trocar a nota de um widget que já existe (menu do widget), em vez de criar um */
+  change?: boolean;
+  onPick: (noteId: string) => Promise<unknown>;
+  onClose: () => void;
+};
+
+/** Escolher a nota do post-it ou do checklist. */
+export function NotePicker({ kind, notes, noteId, change, onPick, onClose }: PickerProps) {
   const open = notes.filter((n) => !n.locked); // nota trancada não vai para a área de trabalho
   const options = kind === "checklist" ? open.filter((n) => n.has_checklist) : open;
   const [id, setId] = useState(options.find((n) => n.id === noteId)?.id ?? options[0]?.id ?? "");
 
-  const add = async () => {
+  const done = async () => {
     if (!id) return;
-    await api.createWidget(kind, id);
+    await onPick(id);
     onClose();
   };
+  const what = kind === "postit" ? "post-it" : "checklist";
 
   return (
-    <Dialog title={kind === "postit" ? "Post-it de qual nota?" : "Checklist de qual nota?"} onClose={onClose}>
+    <Dialog title={change ? `Trocar a nota do ${what}` : `${kind === "postit" ? "Post-it" : "Checklist"} de qual nota?`} onClose={onClose}>
       {options.length > 0 ? (
         <div className="fld">
           <span className="lbl">Nota</span>
@@ -100,7 +114,7 @@ function NotePicker({ kind, notes, noteId, onClose }: { kind: "postit" | "checkl
       )}
       <div className="dlg-actions">
         <button className="btn-soft" onClick={onClose}>Cancelar</button>
-        <button className="btn-acc" disabled={!id} onClick={add}>Adicionar</button>
+        <button className="btn-acc" disabled={!id} onClick={done}>{change ? "Trocar" : "Adicionar"}</button>
       </div>
     </Dialog>
   );

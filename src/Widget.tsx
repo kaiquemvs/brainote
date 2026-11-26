@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { api, type Appearance, type CalEvent, type Note, type Reminder, type Widget } from "./api";
 import { dayItems } from "./dates";
 import { Icon, paths } from "./icons";
+import { Menu, menuAt, type MenuState } from "./Menu";
 import { noteDoc, noteLines, toggleTask, type Line } from "./noteContent";
 
 const COLORS = ["amarelo", "verde", "rosa", "azul"];
@@ -16,6 +17,7 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
   const [note, setNote] = useState<Note | null>(null);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [events, setEvents] = useState<CalEvent[]>([]);
+  const [menu, setMenu] = useState<MenuState | null>(null);
   const [, setTick] = useState(0);
 
   // Cada widget busca só o que mostra (roda a cada gravação no app): a nota dele, ou lembretes e eventos.
@@ -40,19 +42,29 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
 
   // Tema na raiz: as cores do post-it (.t-light .pc-amarelo) valem para o widget e para as bolinhas.
   // O post-it fica sempre com as cores claras, como um papel de verdade (pedido do usuário).
+  // Só o checklist tem vidro; post-it e agenda ficam com cor sólida (o Rust faz o mesmo na janela).
   const theme = w?.kind === "postit" ? "light" : look.theme;
+  const glass = look.glass && w?.kind === "checklist";
   useEffect(() => {
-    document.documentElement.className = `t-${theme}${look.glass ? " g-on" : ""}`;
-  }, [theme, look.glass]);
+    document.documentElement.className = `t-${theme}${glass ? " g-on" : ""}`;
+  }, [theme, glass]);
 
   if (!w) return null;
   const lines = note ? noteLines(noteDoc(note)) : [];
   const title = note && (note.title.trim() || "Nova nota");
 
-  const menu = (e: MouseEvent) => {
-    e.preventDefault();
-    api.widgetMenu();
-  };
+  // Botão direito: o mesmo menu do app, dentro do widget.
+  const openMenu = (e: MouseEvent) =>
+    setMenu({
+      ...menuAt(e),
+      items: [
+        { label: "Abrir no brainote", onSelect: () => api.openWidget(w.id) },
+        ...(w.kind === "agenda" ? [] : [{ label: "Trocar nota…", onSelect: () => api.pickWidgetNote(w.id) }]),
+        { label: "Manter por cima", checked: w.on_top, onSelect: () => api.setWidgetOnTop(w.id, !w.on_top) },
+        { label: "Remover", onSelect: () => api.deleteWidget(w.id) },
+      ],
+    });
+  const menuEl = menu && <Menu menu={menu} onClose={() => setMenu(null)} />;
   const toggle = (index: number) =>
     note && api.updateNote(note.id, note.title, JSON.stringify(toggleTask(noteDoc(note), index)), note.plain_text);
 
@@ -83,7 +95,7 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
 
   if (w.kind === "postit") {
     return (
-      <div className={`wg postit pc-${w.color}`} onContextMenu={menu} onDoubleClick={() => note && api.openNote(note.id)}>
+      <div className={`wg postit pc-${w.color}`} onContextMenu={openMenu} onDoubleClick={() => note && api.openWidget(w.id)}>
         <div className="w-top" data-tauri-drag-region>
           {COLORS.map((c) => (
             <button
@@ -100,6 +112,7 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
         <div className="w-body">
           {note ? <><p className="w-title">{title}</p>{lines.slice(0, 8).map(item)}</> : gone}
         </div>
+        {menuEl}
       </div>
     );
   }
@@ -108,7 +121,7 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
     const tasks = lines.filter((l) => l.task);
     const done = tasks.filter((l) => l.task!.checked).length;
     return (
-      <div className="wg" onContextMenu={menu}>
+      <div className="wg" onContextMenu={openMenu}>
         <div className="w-top" data-tauri-drag-region>
           <span className="lbl" style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--acc)" }} data-tauri-drag-region>
             <Icon size={15}>{paths.checklist}</Icon>
@@ -125,6 +138,7 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
             <div className="w-scroll">{tasks.map(item)}</div>
           </>
         ) : gone}
+        {menuEl}
       </div>
     );
   }
@@ -134,7 +148,7 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
   const next = dayItems(now, events, reminders).filter((i) => !i.done && (i.allDay || i.at >= now)).slice(0, 4);
   const wd = weekday.format(now);
   return (
-    <div className="wg" onContextMenu={menu}>
+    <div className="wg" onContextMenu={openMenu}>
       <div className="w-top" data-tauri-drag-region>
         <span className="grow" data-tauri-drag-region />
         {close}
@@ -155,6 +169,7 @@ export function WidgetApp({ id, initialLook }: { id: string; initialLook: Appear
         ))}
         {next.length === 0 && <p className="t2 ag-empty">Nada mais para hoje.</p>}
       </div>
+      {menuEl}
     </div>
   );
 }

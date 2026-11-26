@@ -75,7 +75,7 @@ pub fn tray(app: &AppHandle) -> tauri::Result<()> {
         .tooltip("brainote")
         .menu(&tray_menu(app)?)
         .show_menu_on_left_click(false)
-        // recebe os cliques de todos os menus do app: bandeja e botão direito dos widgets
+        // cliques no menu da bandeja
         .on_menu_event(|app, e| match e.id.as_ref() {
             "open" => show_main(app),
             "new-note" => {

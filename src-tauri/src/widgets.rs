@@ -2,7 +2,6 @@
 
 use crate::background::{changed, show_main, with_db};
 use crate::{apply_appearance, read_appearance, store};
-use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 const PREFIX: &str = "widget-";
@@ -78,14 +77,29 @@ pub fn remove(app: &AppHandle, id: &str) {
     changed(app);
 }
 
-fn toggle_on_top(app: &AppHandle, id: &str) {
-    let Some(w) = with_db(app, |c| store::get_widget(c, id)) else { return };
-    with_db(app, |c| store::set_widget_on_top(c, id, !w.on_top));
+/// "Manter por cima" (menu do widget).
+pub fn set_on_top(app: &AppHandle, id: &str, on_top: bool) {
+    with_db(app, |c| store::set_widget_on_top(c, id, on_top));
     if let Some(win) = window(app, id) {
-        let _ = win.set_always_on_top(!w.on_top);
-        let _ = win.set_always_on_bottom(w.on_top);
+        let _ = win.set_always_on_top(on_top);
+        let _ = win.set_always_on_bottom(!on_top);
     }
     changed(app);
+}
+
+/// Troca a nota do post-it ou do checklist (escolhida no app, a pedido do menu do widget).
+pub fn set_note(app: &AppHandle, id: &str, note_id: &str) -> Result<(), String> {
+    let w = with_db(app, |c| store::get_widget(c, id)).ok_or("Widget não encontrado.")?;
+    if w.kind == "agenda" {
+        return Err("O widget da agenda não mostra nota.".into());
+    }
+    let body = with_db(app, |c| store::note_body(c, note_id)).ok_or("Nota não encontrada.")?;
+    if body.2.is_some() {
+        return Err("Nota trancada não pode ficar na área de trabalho.".into());
+    }
+    with_db(app, |c| store::set_widget_note(c, id, note_id)).ok_or("Não foi possível trocar a nota.")?;
+    changed(app);
+    Ok(())
 }
 
 /// "Abrir no brainote": a nota do post-it/checklist; sem nota (widget da agenda), a tela de Agenda.
@@ -97,32 +111,11 @@ pub fn open_in_app(app: &AppHandle, note_id: Option<&str>) {
     };
 }
 
-/// Menu de botão direito do próprio Windows: o widget é pequeno demais para um menu em HTML.
-pub fn popup_menu(app: &AppHandle, win: &WebviewWindow) -> tauri::Result<()> {
-    let Some(w) = id_of(win.label()).and_then(|id| with_db(app, |c| store::get_widget(c, id))) else { return Ok(()) };
-    let id = &w.id;
-    let menu = Menu::with_items(
-        app,
-        &[
-            &MenuItem::with_id(app, format!("w-open:{id}"), "Abrir no brainote", true, None::<&str>)?,
-            &CheckMenuItem::with_id(app, format!("w-top:{id}"), "Manter por cima", true, w.on_top, None::<&str>)?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, format!("w-remove:{id}"), "Remover", true, None::<&str>)?,
-        ],
-    )?;
-    win.popup_menu(&menu)
-}
-
-/// Cliques nos menus de widget (botão direito e bandeja). Devolve `false` se o id não é de widget.
+/// Cliques no submenu Widgets da bandeja. Devolve `false` se o id não é de widget.
 pub fn on_menu(app: &AppHandle, menu_id: &str) -> bool {
     let (action, id) = menu_id.split_once(':').unwrap_or((menu_id, ""));
     match action {
-        "w-open" => {
-            let note = with_db(app, |c| store::get_widget(c, id)).and_then(|w| w.note_id);
-            open_in_app(app, note.as_deref());
-        }
-        "w-top" => toggle_on_top(app, id),
-        "w-remove" | "tw" => remove(app, id),
+        "tw" => remove(app, id),
         "tw-agenda" => {
             let app = app.clone();
             std::thread::spawn(move || {

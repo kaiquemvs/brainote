@@ -383,7 +383,7 @@ Uma fase por vez. Em cada uma: plano curto → construir → rodar → me passar
 ## 11. Fora do escopo da v1 (ideias para depois)
 
 - Imagens e anexos dentro das notas, tabelas e nota com senha: **planejado para a versão 1.2** (seção 13).
-- Agenda externa: **planejada para a versão 1.3** pelo link ICS ("Publicar calendário" do Outlook, ou o link iCal do Google), só leitura. A integração completa pelo Microsoft Graph exige registrar um app no Entra ID; na conta corporativa, o TI precisa liberar.
+- Agenda externa: **planejada para a versão 1.4** pelo link ICS ("Publicar calendário" do Outlook, ou o link iCal do Google), só leitura. A integração completa pelo Microsoft Graph exige registrar um app no Entra ID; na conta corporativa, o TI precisa liberar.
 - Atalho global de teclado para nota rápida.
 - Variante escura do ícone no Windows.
 - **Fora do projeto (decisão do usuário):** sincronização entre computadores ou com o celular.
@@ -446,5 +446,20 @@ Use para entender a **estrutura das telas, as classes CSS, as medidas e os compo
   - Ao trancar, os widgets da nota saem da área de trabalho; nota trancada não pode virar widget.
   - Criptografia no Rust (`src-tauri/src/vault.rs`): chave tirada da senha com Argon2id (64 MB, 3 passadas, sal aleatório) e conteúdo com XChaCha20-Poly1305. A senha não é guardada; a chave fica só na memória. O backup leva as notas trancadas criptografadas, com o sal e a conferência da senha (a mesma senha abre depois de importar). O banco zera o texto apagado (`secure_delete`, inclusive no índice da busca); backups feitos antes de trancar ainda têm o texto aberto.
 
-### Versão 1.3 — agenda externa
+### Versão 1.3 — ajustes do dia a dia (em dois lotes)
+
+**Lote A — vidro, janelas e widgets**
+- **Vidro:** passa a ser o mesmo efeito do TranslucentRM dos widgets do Rainmeter do usuário: o acrílico clássico do Windows (`SetWindowCompositionAttribute`, em `src-tauri/src/desktop.rs`), que não fica opaco quando a janela perde o foco. A cor por cima vem do CSS.
+  - Janela principal: a barra lateral é sempre a coluna mais transparente (camada de 40%, letras mais fortes com um contorno suave para ler sobre qualquer coisa atrás da janela); a lista de notas mantém o vidro da versão 1.2; o editor fica com cor sólida.
+  - Widgets: só o checklist tem vidro; post-it e agenda ficam sempre com cor sólida.
+  - Sai o truque que fazia o Windows achar que todas as janelas do brainote estavam ativas (`WM_NCACTIVATE`). Com isso os widgets têm a sombra menor de janela em segundo plano, e o **Win+V** (histórico da área de transferência) volta a abrir dentro do app.
+- **Menu do widget:** o botão direito abre o mesmo menu do app (Abrir no brainote, Trocar nota…, Manter por cima, Remover), dentro do widget e pelo teclado.
+- **Trocar nota:** "Trocar nota…" no post-it ou no checklist abre o brainote com a lista de notas para escolher (no checklist, só as notas com checklist; nota trancada não entra).
+- **Win+D:** enquanto a área de trabalho está selecionada, o app confere a cada 0,15 s se ela cobriu os widgets. Antes, o Win+D apertado com a área de trabalho já selecionada (ex.: depois de um clique nela), ou com o Explorer demorando mais de 1 s, deixava os widgets escondidos.
+
+**Lote B — texto (planejado)**
+- Cursor de texto ("I") no corpo e no título da nota; no modo caneta e na borracha, o cursor de texto com a cor da ferramenta.
+- Corretor: o do próprio Windows para o português (o mesmo do Edge e do Teams) e o dicionário embutido para o inglês; uma palavra certa em qualquer um dos dois idiomas não fica sublinhada. Idioma principal por nota (PT/EN), título também corrigido e correção automática ligada por padrão.
+
+### Versão 1.4 — agenda externa
 - Ler um calendário pelo link ICS e mostrar os compromissos na Agenda (só leitura).

@@ -588,6 +588,11 @@ pub fn set_widget_color(c: &Connection, id: &str, color: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn set_widget_note(c: &Connection, id: &str, note_id: &str) -> Result<()> {
+    c.execute("UPDATE widgets SET note_id = ?2 WHERE id = ?1", params![id, note_id])?;
+    Ok(())
+}
+
 pub fn set_widget_on_top(c: &Connection, id: &str, on_top: bool) -> Result<()> {
     c.execute("UPDATE widgets SET on_top = ?2 WHERE id = ?1", params![id, on_top])?;
     Ok(())
