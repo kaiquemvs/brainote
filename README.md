@@ -12,7 +12,7 @@
 <p>Tudo fica no seu computador: sem nuvem, sem login e sem telemetria.</p>
 
 ![Windows 11](https://img.shields.io/badge/Windows-11-FF8C42?style=flat-square&labelColor=1C1C1E)
-![Versão 1.2.0](https://img.shields.io/badge/vers%C3%A3o-1.2.0-F5B800?style=flat-square&labelColor=1C1C1E)
+![Versão 1.3.0](https://img.shields.io/badge/vers%C3%A3o-1.3.0-F5B800?style=flat-square&labelColor=1C1C1E)
 ![Tauri 2](https://img.shields.io/badge/Tauri-2-F5B800?style=flat-square&labelColor=1C1C1E)
 ![React 19](https://img.shields.io/badge/React-19-F5B800?style=flat-square&labelColor=1C1C1E)
 ![Rust](https://img.shields.io/badge/Rust-backend-F5B800?style=flat-square&labelColor=1C1C1E)
@@ -65,7 +65,7 @@ O brainote é um app pessoal de notas para o Windows 11, com o visual e a simpli
     <td valign="top">
       <img src="docs/imagens/icones/vidro.svg" width="44" height="44" alt="">
       <h3>Efeito vidro</h3>
-      Tema claro ou escuro com o Acrylic do Windows 11, que continua ativo mesmo quando a janela perde o foco.
+      Barra lateral bem transparente, lista translúcida e editor sólido, nos temas claro e escuro. O vidro não apaga quando a janela perde o foco.
     </td>
   </tr>
 </table>
@@ -105,6 +105,22 @@ O brainote é um app pessoal de notas para o Windows 11, com o visual e a simpli
       <p align="center"><b>Nota trancada</b><br><sub>Só o título fica visível até digitar a senha.</sub></p>
     </td>
   </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/imagens/corretor-escuro.webp">
+        <img src="docs/imagens/corretor-claro.webp" width="100%" alt="Palavra errada sublinhada numa nota e o menu do botão direito com as sugestões equipe, equipa e equipei">
+      </picture>
+      <p align="center"><b>Corretor</b><br><sub>O do próprio Windows para o português, com sugestões no botão direito.</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/imagens/widgets-escuro.webp">
+        <img src="docs/imagens/widgets-claro.webp" width="100%" alt="Post-it, checklist e agenda de hoje na área de trabalho, com o menu do botão direito aberto no post-it: Abrir no brainote, Trocar nota, Manter por cima e Remover">
+      </picture>
+      <p align="center"><b>Widgets</b><br><sub>O mesmo menu do app no botão direito, com "Trocar nota…".</sub></p>
+    </td>
+  </tr>
 </table>
 
 ## Tudo o que o brainote faz
@@ -119,13 +135,15 @@ O brainote é um app pessoal de notas para o Windows 11, com o visual e a simpli
 
 ### Editor
 - Menu **Aa**: título, subtítulo, corpo, lista com marcadores, lista numerada, negrito, itálico, sublinhado e riscado.
-- **Marca-texto** em tons pastel (azul, amarelo, verde, vermelho e laranja). O **modo caneta** marca cada trecho arrastado, e a **borracha** tira a marca do mesmo jeito.
+- **Marca-texto** em tons pastel (azul, amarelo, verde, vermelho e laranja). O **modo caneta** marca cada trecho arrastado, e a **borracha** tira a marca do mesmo jeito. Nos dois, o cursor de texto mostra a cor da ferramenta, para você ver onde a marca começa.
 - **Checklists**: o item marcado fica no mesmo lugar. Enter cria outro item, Enter num item vazio sai do checklist e Ctrl+Enter marca ou desmarca.
 - **Tabelas**: Tab anda entre as células (na última, cria uma linha). Com o botão direito você adiciona ou remove linhas e colunas, e arrastando a borda muda a largura.
 - **Imagens** (PNG, JPG, GIF, WebP e BMP): pelo clipe da barra, arrastando do Explorador ou colando com Ctrl+V, inclusive print de tela. O canto de baixo muda o tamanho sem distorcer.
 - **Anexos** de qualquer tipo, até 100 MB por arquivo. Clicar abre no programa padrão do Windows, e o botão direito oferece "Salvar como…" e "Remover".
 - **Exportar a nota** em `.md` ou `.txt`, levando junto uma pasta com as imagens e os anexos.
-- **Corretor ortográfico** em português do Brasil e inglês, sem internet, com sugestões no botão direito. A **correção automática** é opcional e o Ctrl+Z desfaz a troca.
+- **Corretor ortográfico**, sem internet: o português usa o corretor do próprio Windows (o mesmo do Edge e do Teams), e o inglês, um dicionário que vem no app. Uma palavra certa em qualquer um dos dois idiomas não fica sublinhada. Sugestões no botão direito, no texto e no título.
+- Botão **PT/EN** na barra do editor: escolhe o idioma principal de cada nota, de onde vêm primeiro as sugestões.
+- **Correção automática** ligada (dá para desligar nas Configurações): "voce" vira "você" e "concerteza" vira "com certeza" ao digitar o espaço. No texto da nota, o Ctrl+Z desfaz a troca.
 
 ### Busca
 - Procura no título e no conteúdo, pelo começo das palavras e sem diferenciar acentos.
@@ -152,15 +170,16 @@ O brainote é um app pessoal de notas para o Windows 11, com o visual e a simpli
 
 ### Widgets na área de trabalho
 - **Post-it** de uma nota, em 4 cores (amarelo, verde, rosa e azul), com checklist marcável e imagens. Um duplo clique abre a nota no app.
-- **Checklist** com "X de Y concluídas" e barra de progresso.
+- **Checklist** com "X de Y concluídas" e barra de progresso. É o único widget com efeito vidro; post-it e agenda ficam com cor sólida.
 - **Agenda de hoje** com os próximos 4 compromissos e lembretes do dia.
 - Cada widget é uma janela própria, fora da barra de tarefas, que fica no fundo da área de trabalho ou por cima das janelas. A posição e o tamanho ficam salvos.
+- Botão direito no widget: o mesmo menu do app, com **Abrir no brainote**, **Trocar nota…** (escolhe outra nota para o post-it ou o checklist), **Manter por cima** e **Remover**.
 - Marcar um item no widget marca na nota, e o contrário também.
 - Com **Win+D**, os widgets continuam visíveis na frente da área de trabalho.
 
 ### Aparência
 - Tema **claro** ou **escuro**, com o amarelo de destaque e a fonte Inter já incluída no app.
-- **Efeito vidro** com o Acrylic do Windows 11, que liga e desliga na hora. Ele continua ativo quando você clica em outra janela.
+- **Efeito vidro** com o acrílico clássico do Windows (o mesmo efeito do TranslucentRM, do Rainmeter), que liga e desliga na hora. A barra lateral é sempre a coluna mais transparente, a lista de notas fica translúcida e o editor sólido. O vidro continua igual quando você clica em outra janela.
 - Barras de rolagem, listas suspensas e seletores próprios, nas cores do tema.
 
 ### Bandeja e inicialização
@@ -193,7 +212,7 @@ O instalador é gerado a partir do código e instala **só para o seu usuário**
    npm run tauri build
    ```
 
-3. Abra o instalador gerado em `src-tauri\target\release\bundle\nsis\brainote_1.2.0_x64-setup.exe`.
+3. Abra o instalador gerado em `src-tauri\target\release\bundle\nsis\brainote_1.3.0_x64-setup.exe`.
 
 > [!NOTE]
 > O executável não tem assinatura digital. Na primeira vez, o SmartScreen pode avisar: clique em **Mais informações** e depois em **Executar assim mesmo**.
@@ -204,7 +223,7 @@ O instalador é gerado a partir do código e instala **só para o seu usuário**
 |---|---|
 | `npm run tauri dev` | Abre o app em modo de desenvolvimento, que recarrega a cada mudança. Feche o brainote instalado antes. |
 | `npm test` | Roda os testes da interface: datas, conteúdo das notas, corretor e destaque da busca. |
-| `cargo test` (dentro de `src-tauri`) | Roda os testes do backend: banco, lembretes, criptografia, backup e anexos. |
+| `cargo test` (dentro de `src-tauri`) | Roda os testes do backend: banco, lembretes, criptografia, backup, anexos e corretor. |
 | `npm run tauri build` | Gera o instalador em `src-tauri/target/release/bundle/`. |
 
 ### Como é feito
@@ -215,7 +234,7 @@ O instalador é gerado a partir do código e instala **só para o seu usuário**
 | Interface | React 19, TypeScript e Vite, com CSS puro e variáveis de tema |
 | Editor | [TipTap 3](https://tiptap.dev/), com listas de tarefas, tabelas, imagens e marca-texto |
 | Banco | SQLite com `rusqlite`, migrações versionadas e busca FTS5 |
-| Corretor | Dicionários Hunspell conferidos no Rust com o crate `spellbook` |
+| Corretor | Corretor do Windows (Spell Checking API) para o português e dicionário Hunspell com o crate `spellbook` para o inglês |
 | Criptografia | `argon2` e `chacha20poly1305` |
 | Sistema | Plugins oficiais do Tauri (instância única, iniciar com o Windows, diálogos e posição da janela) e notificações nativas do Windows |
 
@@ -225,6 +244,7 @@ O instalador é gerado a partir do código e instala **só para o seu usuário**
 src/                  interface (React)
   App.tsx             janela principal: barra lateral, lista e editor
   Editor.tsx          editor TipTap e a barra de ferramentas
+  TitleField.tsx      título da nota com o corretor
   Agenda.tsx          calendário do mês e o painel do dia
   Reminders.tsx       tela de lembretes
   Widget.tsx          post-it, checklist e agenda de hoje
@@ -238,7 +258,8 @@ src-tauri/src/        backend (Rust)
   widgets.rs          janelas dos widgets
   desktop.rs          efeito vidro e Win+D
   attachments.rs      imagens e anexos
-  spell.rs            corretor ortográfico
+  spell.rs            corretor ortográfico (português e inglês)
+  winspell.rs         corretor do Windows para o português
 docs/
   ESPECIFICACAO.md    o que o app faz, em detalhe
   TESTES.md           roteiro de testes de cada versão
@@ -251,12 +272,13 @@ docs/
 | **1.0** | Notas e pastas, checklists, lembretes com notificação, agenda, widgets, tema claro e escuro, efeito vidro, bandeja e backup. |
 | **1.1** | Post-it sempre claro, rolagem e listas próprias, seletores de data e hora, repetição por dias da semana, exportar nota, arrastar notas para pastas, marca-texto, corretor e correção automática. |
 | **1.2** | Imagens e anexos, backup em `.zip`, destaque da busca, vidro sem foco, tabelas e notas com senha. |
-| **1.3** *(planejada)* | Agenda externa: mostrar um calendário do Outlook ou do Google pelo link ICS, só para leitura. |
+| **1.3** | Vidro novo (barra lateral mais transparente, lista translúcida e editor sólido), menu e troca de nota nos widgets, Win+D e Win+V corrigidos, corretor do Windows para o português, idioma por nota, correção no título e cursor de texto. |
+| **1.4** *(planejada)* | Agenda externa: mostrar um calendário do Outlook ou do Google pelo link ICS, só para leitura. |
 
 ## Créditos
 
 - Fonte [Inter](https://rsms.me/inter/), licença SIL Open Font License.
-- Dicionário pt-BR do projeto VERO/LibreOffice (LGPL-3.0 ou MPL-2.0) e dicionário en-US do SCOWL (MIT e BSD), pelo pacote [wooorm/dictionaries](https://github.com/wooorm/dictionaries). As licenças estão em `src-tauri/dicionarios/`.
+- Dicionário pt-BR do projeto VERO/LibreOffice (LGPL-3.0 ou MPL-2.0; usado quando o Windows não tem o corretor de português) e dicionário en-US do SCOWL (MIT e BSD), pelo pacote [wooorm/dictionaries](https://github.com/wooorm/dictionaries). As licenças estão em `src-tauri/dicionarios/`.
 
 <br>
 
