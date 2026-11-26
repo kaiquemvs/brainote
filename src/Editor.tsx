@@ -4,7 +4,7 @@ import { EditorContent, useEditor, useEditorState, type Editor as TipTap } from 
 import type { ChainedCommands } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskList } from "@tiptap/extension-list";
-import { api, type Note, type Reminder } from "./api";
+import { api, type Note, type Reminder, type SpellLang } from "./api";
 import { ChecklistItem } from "./checklist";
 import { editorDate, reminderWhen } from "./dates";
 import { Marker, MARKER_COLORS, type MarkerColor } from "./highlight";
@@ -15,6 +15,7 @@ import { noteDoc as initialContent, noteFiles, noteToText } from "./noteContent"
 import { SearchHighlight, setSearch } from "./searchHighlight";
 import { TableMenu, Tables } from "./tables";
 import { Spellcheck, type SpellMenu } from "./spellcheck";
+import { TitleField } from "./TitleField";
 import { WindowButtons } from "./WindowButtons";
 
 const extensions = [
@@ -61,6 +62,10 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
   // caneta: cada trecho arrastado fica marcado; borracha: cada trecho arrastado perde a marca
   const [tool, setTool] = useState<MarkTool>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  // idioma principal do corretor nesta nota (o botão PT/EN da barra)
+  const [lang, setLang] = useState<SpellLang>(note.spell_lang);
+  const langRef = useRef(lang);
+  langRef.current = lang;
   // Última versão de tudo, em refs: o salvamento também roda depois que o editor já foi desmontado.
   const latest = useRef({ title: note.title, json: JSON.stringify(initialContent(note)), text: note.plain_text });
   const dirty = useRef(false);
@@ -88,7 +93,7 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
 
   // Botão direito numa palavra errada: sugestões do corretor no menu do app.
   const spellMenu = async (m: SpellMenu) => {
-    const words = await api.spellSuggest(m.word);
+    const words = await api.spellSuggest(m.word, langRef.current);
     const items = words.length ? words.map((w) => ({ label: w, onSelect: () => m.replace(w) })) : [{ label: "Sem sugestões", onSelect: () => {} }];
     openMenu({ x: m.x, y: m.y, items: [...items, { label: "Ignorar", onSelect: m.ignore }] });
   };
@@ -100,7 +105,7 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
       ...extensions,
       // nota trancada não aceita imagem nem anexo (nem colando, nem arrastando)
       ...(locked ? [] : [Picture, Files, Attachment.configure({ openMenu })]),
-      Spellcheck.configure({ check: api.spellCheck, fix: api.spellAutocorrect, onMenu: (m) => spellMenuRef.current(m) }),
+      Spellcheck.configure({ check: api.spellCheck, fix: (w) => api.spellAutocorrect(w, langRef.current), onMenu: (m) => spellMenuRef.current(m) }),
       TableMenu.configure({ openMenu }),
     ],
     content: initialContent(note),
@@ -240,6 +245,18 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
         >
           <Icon size={18}>{paths.download}</Icon>
         </button>
+        <button
+          className="btn-ic lang-b"
+          aria-label={`Idioma do corretor nesta nota: ${lang === "pt" ? "português" : "inglês"}. Clique para trocar.`}
+          title="Idioma do corretor nesta nota (as palavras certas no outro idioma também valem)"
+          onClick={() => {
+            const next = lang === "pt" ? "en" : "pt";
+            setLang(next);
+            api.setNoteLang(note.id, next).then(onSaved);
+          }}
+        >
+          {lang.toUpperCase()}
+        </button>
         <span className="grow" data-tauri-drag-region />
         <WindowButtons />
         {markOpen && editor && (
@@ -282,25 +299,17 @@ export function Editor({ note, autoFocus, onSaved, reminder, onReminder, onRemov
               </span>
             </p>
           )}
-          <label className="sr-only" htmlFor="titulo">Título da nota</label>
-          <input
-            id="titulo"
-            ref={titleRef}
-            className="title-in"
-            spellCheck={false}
-            placeholder="Título"
+          <TitleField
             value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              latest.current = { ...latest.current, title: e.target.value };
+            inputRef={titleRef}
+            lang={lang}
+            openMenu={openMenu}
+            onChange={(t) => {
+              setTitle(t);
+              latest.current = { ...latest.current, title: t };
               schedule();
             }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                editor?.commands.focus("start");
-              }
-            }}
+            onEnter={() => editor?.commands.focus("start")}
           />
           <EditorContent editor={editor} />
         </div>

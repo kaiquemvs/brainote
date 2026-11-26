@@ -6,6 +6,7 @@ mod spell;
 mod store;
 mod vault;
 mod widgets;
+mod winspell;
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -476,6 +477,15 @@ async fn change_password(app: AppHandle, current: String, new: String, hint: Str
     Ok(true)
 }
 
+/// Idioma principal do corretor na nota: "pt" ou "en".
+#[tauri::command]
+fn set_note_lang(app: AppHandle, db: State<Db>, id: &str, lang: &str) -> Res<()> {
+    if lang != "pt" && lang != "en" {
+        return Err("Idioma inválido.".into());
+    }
+    write(&app, &db, |c| store::set_note_lang(c, id, lang))
+}
+
 #[tauri::command]
 fn set_pinned(app: AppHandle, db: State<Db>, id: &str, pinned: bool) -> Res<()> {
     write(&app, &db, |c| store::set_pinned(c, id, pinned))
@@ -668,20 +678,21 @@ async fn spell_check(words: Vec<String>) -> Vec<bool> {
     spell::check(&words)
 }
 
+/// `lang`: idioma principal da nota ("pt" ou "en"), de onde vêm primeiro as sugestões.
 #[tauri::command]
-async fn spell_suggest(word: String) -> Vec<String> {
-    spell::suggest(&word)
+async fn spell_suggest(word: String, lang: String) -> Vec<String> {
+    spell::suggest(&word, &lang)
 }
 
 #[tauri::command]
-async fn spell_autocorrect(word: String) -> Option<String> {
-    spell::autocorrect(&word)
+async fn spell_autocorrect(word: String, lang: String) -> Option<String> {
+    spell::autocorrect(&word, &lang)
 }
 
-/// Correção automática ao digitar (Configurações). Começa desligada.
+/// Correção automática ao digitar (Configurações). Começa ligada (versão 1.3).
 #[tauri::command]
 fn get_autocorrect(db: State<Db>) -> Res<bool> {
-    with(&db, |c| Ok(store::get_setting(c, "autocorrect")?.is_some_and(|v| v == "1")))
+    with(&db, |c| Ok(store::get_setting(c, "autocorrect")?.is_none_or(|v| v == "1")))
 }
 
 #[tauri::command]
@@ -860,6 +871,7 @@ pub fn run() {
             spell_check,
             spell_suggest,
             spell_autocorrect,
+            set_note_lang,
             get_autocorrect,
             set_autocorrect,
             export_note,

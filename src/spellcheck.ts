@@ -1,6 +1,6 @@
-// Corretor ortográfico no editor (docs/ESPECIFICACAO.md, 13 — versão 1.1): sublinha as palavras que não
-// existem em português nem em inglês (dicionários no Rust, src-tauri/src/spell.rs) e, no botão direito,
-// mostra as sugestões no menu do app. Com a correção automática ligada (Configurações), troca a palavra
+// Corretor ortográfico no editor (docs/ESPECIFICACAO.md, 13 — versões 1.1 e 1.3): sublinha as palavras que não
+// existem em português nem em inglês (corretor do Windows e dicionário no Rust, src-tauri/src/spell.rs) e, no
+// botão direito, mostra as sugestões no menu do app. Com a correção automática ligada (Configurações), troca a palavra
 // errada assim que você digita espaço, pontuação ou Enter depois dela, se a troca for quase certa.
 import { Extension } from "@tiptap/core";
 import { closeHistory } from "@tiptap/pm/history";
@@ -34,13 +34,33 @@ const key = new PluginKey<DecorationSet>("spellcheck");
 // palavra → existe? Vale para todas as notas enquanto a janela está aberta (inclui as "ignoradas").
 const known = new Map<string, boolean>();
 
+/** Palavras ainda não conferidas vão ao Rust; depois, `isWrong` responde na hora. */
+export async function lookup(words: string[], check: (words: string[]) => Promise<boolean[]>) {
+  const unknown = [...new Set(words)].filter((w) => !known.has(w));
+  if (unknown.length) (await check(unknown)).forEach((ok, i) => known.set(unknown[i], ok));
+}
+export const isWrong = (word: string) => known.get(word) === false;
+/** "Ignorar": a palavra conta como certa até fechar a janela. */
+export const ignoreWord = (word: string) => known.set(word, true);
+
 let autoOn = false;
 /** Liga ou desliga a correção automática (vem das Configurações). */
 export const setAutocorrect = (on: boolean) => {
   autoOn = on;
 };
+export const autocorrectOn = () => autoOn;
 // o que encerra uma palavra ao digitar (hífen e apóstrofo ficam de fora: fazem parte de "guarda-chuva", "d'água")
-const BOUNDARY = /^[\s.,;:!?)\]}"”]$/;
+export const BOUNDARY = /^[\s.,;:!?)\]}"”]$/;
+
+/** A palavra que acabou de ser digitada no fim de `before`, se ela pode ser corrigida: e-mail, caminho, hora,
+ *  código e palavras já conferidas como certas (ou ignoradas) ficam como estão. */
+export function wordBefore(before: string): string | null {
+  const token = before.split(/\s/).pop() ?? "";
+  if (/[@/\\:\d]/.test(token)) return null;
+  const last = wordsIn(token).pop(); // links e e-mails já saem aqui
+  if (!last || last.at + last.word.length !== token.length || known.get(last.word)) return null;
+  return last.word;
+}
 
 export const Spellcheck = Extension.create<Options>({
   name: "spellcheck",
@@ -55,11 +75,8 @@ export const Spellcheck = Extension.create<Options>({
     const autocorrect = (view: EditorView, at: number) => {
       if (!autoOn) return;
       const $at = view.state.doc.resolve(at);
-      const token = $at.parent.textBetween(0, $at.parentOffset, undefined, " ").split(/\s/).pop() ?? "";
-      if (/[@/\\:\d]/.test(token)) return; // e-mail, caminho, hora, código: não mexe
-      const last = wordsIn(token).pop(); // links e e-mails já saem aqui
-      if (!last || last.at + last.word.length !== token.length || known.get(last.word)) return;
-      const { word } = last;
+      const word = wordBefore($at.parent.textBetween(0, $at.parentOffset, undefined, " "));
+      if (!word) return;
       const from = at - word.length;
       fix(word).then((right) => {
         // só troca se a palavra continua lá (o texto pode ter mudado enquanto o Rust respondia)
@@ -78,11 +95,10 @@ export const Spellcheck = Extension.create<Options>({
     };
 
     const run = async (view: EditorView) => {
-      const unknown = [...new Set(ranges(view).map((r) => r.word))].filter((w) => !known.has(w));
-      if (unknown.length) (await check(unknown)).forEach((ok, i) => known.set(unknown[i], ok));
+      await lookup(ranges(view).map((r) => r.word), check);
       if (view.isDestroyed) return;
       const decos = ranges(view) // de novo: o texto pode ter mudado enquanto o Rust respondia
-        .filter((r) => known.get(r.word) === false)
+        .filter((r) => isWrong(r.word))
         .map((r) => Decoration.inline(r.from, r.to, { class: "spell-err" }, { word: r.word }));
       view.dispatch(view.state.tr.setMeta(key, DecorationSet.create(view.state.doc, decos)));
     };
@@ -131,7 +147,7 @@ export const Spellcheck = Extension.create<Options>({
                 word,
                 replace: (w) => view.dispatch(view.state.tr.insertText(w, hit.from, hit.to)),
                 ignore: () => {
-                  known.set(word, true);
+                  ignoreWord(word);
                   run(view);
                 },
               });

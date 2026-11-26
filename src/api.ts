@@ -13,7 +13,10 @@ export type Note = {
   has_checklist: boolean;
   /** com senha: content_json nulo e plain_text vazio; o conteúdo só vem por openLockedNote */
   locked: boolean;
+  /** idioma principal do corretor nesta nota */
+  spell_lang: SpellLang;
 };
+export type SpellLang = "pt" | "en";
 
 /** Notas com senha: já existe senha? estão abertas agora? `hint` = dica da senha. */
 export type LockState = { has_password: boolean; unlocked: boolean; hint: string | null };
@@ -65,8 +68,10 @@ export const api = {
   openAttachment: (id: string) => call<void>("open_attachment", { id }),
   saveAttachmentAs: (id: string) => call<string | null>("save_attachment_as", { id }),
   spellCheck: (words: string[]) => call<boolean[]>("spell_check", { words }),
-  spellSuggest: (word: string) => call<string[]>("spell_suggest", { word }),
-  spellAutocorrect: (word: string) => call<string | null>("spell_autocorrect", { word }),
+  /** `lang`: idioma principal da nota, de onde vêm primeiro as sugestões */
+  spellSuggest: (word: string, lang: SpellLang) => call<string[]>("spell_suggest", { word, lang }),
+  spellAutocorrect: (word: string, lang: SpellLang) => call<string | null>("spell_autocorrect", { word, lang }),
+  setNoteLang: (id: string, lang: SpellLang) => call<void>("set_note_lang", { id, lang }),
   getAutocorrect: () => call<boolean>("get_autocorrect"),
   setAutocorrect: (enabled: boolean) => call<void>("set_autocorrect", { enabled }),
   /** caminho do arquivo salvo, ou null se cancelou */

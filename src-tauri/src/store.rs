@@ -88,6 +88,9 @@ UPDATE reminders SET repeat = 'weekly:' || CAST(strftime('%w', substr(due_at, 1,
 ALTER TABLE notes ADD COLUMN locked TEXT;
 -- o índice da busca apaga de verdade o texto antigo ao trancar (sem isso ele ficaria lá até a próxima arrumação)
 INSERT INTO notes_fts (notes_fts, rank) VALUES ('secure-delete', 1);
+"#, r#"
+-- Versão 1.3: idioma principal do corretor na nota ('en'; nulo = português).
+ALTER TABLE notes ADD COLUMN spell_lang TEXT;
 "#];
 
 #[derive(Serialize)]
@@ -109,6 +112,8 @@ pub struct Note {
     pub has_checklist: bool,
     /// com senha: o conteúdo só sai por `open_locked_note` (lib.rs)
     pub locked: bool,
+    /// idioma principal do corretor: "pt" ou "en"
+    pub spell_lang: String,
 }
 
 #[derive(Serialize)]
@@ -612,7 +617,7 @@ pub fn set_widget_size(c: &Connection, id: &str, width: f64, height: f64) -> Res
 
 // has_checklist: o JSON do TipTap (JSON.stringify, sem espaços) tem pelo menos um item de checklist.
 const NOTE_COLS: &str = r#"id, folder_id, title, content_json, plain_text, pinned, updated_at,
-    COALESCE(content_json LIKE '%"type":"taskItem"%', 0), locked IS NOT NULL"#;
+    COALESCE(content_json LIKE '%"type":"taskItem"%', 0), locked IS NOT NULL, COALESCE(spell_lang, 'pt')"#;
 
 fn note(r: &Row) -> Result<Note> {
     Ok(Note {
@@ -625,6 +630,7 @@ fn note(r: &Row) -> Result<Note> {
         updated_at: r.get(6)?,
         has_checklist: r.get(7)?,
         locked: r.get(8)?,
+        spell_lang: r.get(9)?,
     })
 }
 
@@ -700,6 +706,12 @@ pub fn locked_notes(c: &Connection) -> Result<Vec<(String, String)>> {
 
 pub fn set_locked_cipher(c: &Connection, id: &str, sealed: &str) -> Result<()> {
     c.execute("UPDATE notes SET locked = ?2 WHERE id = ?1", params![id, sealed])?;
+    Ok(())
+}
+
+/// "pt" volta a ser nulo (o padrão).
+pub fn set_note_lang(c: &Connection, id: &str, lang: &str) -> Result<()> {
+    c.execute("UPDATE notes SET spell_lang = NULLIF(?2, 'pt') WHERE id = ?1", params![id, lang])?;
     Ok(())
 }
 

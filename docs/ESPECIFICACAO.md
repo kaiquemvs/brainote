@@ -457,9 +457,13 @@ Use para entender a **estrutura das telas, as classes CSS, as medidas e os compo
 - **Trocar nota:** "Trocar nota…" no post-it ou no checklist abre o brainote com a lista de notas para escolher (no checklist, só as notas com checklist; nota trancada não entra).
 - **Win+D:** enquanto a área de trabalho está selecionada, o app confere a cada 0,15 s se ela cobriu os widgets. Antes, o Win+D apertado com a área de trabalho já selecionada (ex.: depois de um clique nela), ou com o Explorer demorando mais de 1 s, deixava os widgets escondidos.
 
-**Lote B — texto (planejado)**
-- Cursor de texto ("I") no corpo e no título da nota; no modo caneta e na borracha, o cursor de texto com a cor da ferramenta.
-- Corretor: o do próprio Windows para o português (o mesmo do Edge e do Teams) e o dicionário embutido para o inglês; uma palavra certa em qualquer um dos dois idiomas não fica sublinhada. Idioma principal por nota (PT/EN), título também corrigido e correção automática ligada por padrão.
+**Lote B — texto**
+- **Cursor de texto** ("I") no corpo, no título e nos campos de texto. No modo caneta e na borracha, o mesmo cursor de texto com uma bolinha da cor da ferramenta ao lado, para ver exatamente onde a marca começa.
+- **Corretor:** o português passa a usar o corretor do próprio Windows (`src-tauri/src/winspell.rs`, o mesmo do Edge e do Teams), que acerta acentos ("voce" → "você", "sabado" → "sábado"), troca expressões ("concerteza" → "com certeza") e sugere melhor ("mecher" → "mexer"). Sem esse corretor no Windows, volta o dicionário embutido. O inglês continua com o dicionário embutido (o Windows em português não traz o de inglês). Uma palavra certa em qualquer um dos dois idiomas não fica sublinhada.
+  - **Idioma por nota:** botão **PT/EN** na barra do editor (padrão PT, guardado em `notes.spell_lang`). Ele decide de onde vêm primeiro as sugestões (até 4 do idioma da nota, depois as do outro) e a correção automática; em nota em português vale primeiro a troca que o Windows faz sozinho.
+  - **Título** também é corrigido: sublinhado, sugestões no botão direito e correção automática (no título, Ctrl+Z não desfaz a troca).
+  - **Correção automática** passa a vir ligada (quem já tinha escolhido nas Configurações continua com a escolha).
+  - Limite: palavras que existem mas estão erradas no contexto ("esta/está", "e/é") não são pegas; isso exigiria revisão gramatical, que o corretor do Windows não faz.
 
 ### Versão 1.4 — agenda externa
 - Ler um calendário pelo link ICS e mostrar os compromissos na Agenda (só leitura).
